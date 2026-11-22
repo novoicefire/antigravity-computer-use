@@ -1,0 +1,11 @@
+# Computer Use 外掛 Git 忽略清單：排除 Python 快取、系統雜檔與本機暫存紀錄
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

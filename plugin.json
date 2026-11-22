@@ -1,0 +1,22 @@
+{
+  // Antigravity Computer Use 插件清單檔：整合背景桌面操控 (cua-driver) 與已登入 Chrome 操控 (chrome-devtools)
+  "name": "computer-use",
+  "displayName": "Computer Use (Background Desktop & Chrome)",
+  "version": "1.0.0",
+  "description": "Codex-style background computer use for Windows and logged-in Chrome without hijacking the physical mouse cursor or stealing window focus.",
+  "logo": "assets/logo.svg",
+  "author": {
+    "name": "novoicefire",
+    "url": "https://github.com/novoicefire"
+  },
+  "homepage": "https://github.com/novoicefire/antigravity-computer-use",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/novoicefire/antigravity-computer-use.git"
+  },
+  "suggestedPrompts": [
+    "在不搶滑鼠的情況下，列出我目前 Chrome 開著的所有已登入分頁",
+    "在背景幫我打開小算盤或記事本執行操作，不要切換我的前景視窗",
+    "檢查目前 Computer Use（cua-driver 與 Chrome 遠端偵錯）的環境狀態"
+  ]
+}

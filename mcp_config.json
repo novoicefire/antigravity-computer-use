@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--autoConnect"
+      ]
+    },
+    "cua-driver": {
+      "command": "py",
+      "args": [
+        "-3",
+        "${PLUGIN_ROOT}/bin/cua_window_glow_proxy.py",
+        "mcp",
+        "--grant",
+        "existing-profile"
+      ],
+      "env": {
+        "CUA_GLOW_COLOR": "auto",
+        "CUA_GLOW_HOLD_SEC": "3.5"
+      }
+    }
+  }
+}
