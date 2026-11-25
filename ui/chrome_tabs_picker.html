@@ -35,6 +35,9 @@
     --p-tile: rgba(255, 255, 255, 0.048);
     --p-tile-ring: oklch(1 0 0 / 0.09);
     --p-btn-hover: rgba(255, 255, 255, 0.075);
+    --p-viewing-fg: #34d399;
+    --p-viewing-bg: rgba(52, 211, 153, 0.11);
+    --p-viewing-ring: rgba(52, 211, 153, 0.24);
   }
 
   [data-theme="light"],
@@ -59,6 +62,9 @@
     --p-tile: rgba(0, 0, 0, 0.036);
     --p-tile-ring: oklch(0 0 0 / 0.085);
     --p-btn-hover: rgba(0, 0, 0, 0.065);
+    --p-viewing-fg: #059669;
+    --p-viewing-bg: rgba(5, 150, 105, 0.095);
+    --p-viewing-ring: rgba(5, 150, 105, 0.22);
   }
 
   html, body {
@@ -189,6 +195,68 @@
 
   .icon-btn.is-loading svg {
     animation: spinRefresh 680ms linear infinite;
+  }
+
+  /* Live Auto-Refresh Toggle Pill */
+  .live-toggle-btn {
+    appearance: none;
+    border: none;
+    height: 22px;
+    padding: 0 7px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    flex-shrink: 0;
+    background: transparent;
+    color: var(--p-ink-3);
+    box-shadow: inset 0 0 0 1px var(--p-border-subtle);
+    transition-property: transform, background-color, color, box-shadow;
+    transition-duration: 130ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .live-toggle-btn:hover {
+    background: var(--p-btn-hover);
+    color: var(--p-ink-1);
+  }
+
+  .live-toggle-btn:active {
+    transform: scale(0.96);
+  }
+
+  .live-toggle-btn.is-live {
+    background: var(--p-tile);
+    color: var(--p-ink-1);
+    box-shadow: inset 0 0 0 1px var(--p-border);
+  }
+
+  .live-led {
+    width: 5.5px;
+    height: 5.5px;
+    border-radius: 99px;
+    border: 1px solid var(--p-ink-3);
+    background: transparent;
+    flex-shrink: 0;
+    transition-property: background-color, border-color, opacity;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  @keyframes livePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.42; }
+  }
+
+  .live-toggle-btn.is-live .live-led {
+    border-color: transparent;
+    background: var(--p-viewing-fg);
+    animation: livePulse 2.4s ease-in-out infinite;
   }
 
   /* Scrollable Flush Tab List */
@@ -324,9 +392,20 @@
     box-shadow: 0 0 0 2px var(--p-canvas);
   }
 
+  .active-dot.is-viewing {
+    background: var(--p-viewing-fg);
+  }
+
   /* Two-tier Text Hierarchy */
   .tab-main {
     flex: 1;
+    min-width: 0;
+  }
+
+  .tab-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     min-width: 0;
   }
 
@@ -338,6 +417,36 @@
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: 1.32;
+  }
+
+  .viewing-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 16px;
+    padding: 0 5.5px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 550;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    color: var(--p-viewing-fg);
+    background: var(--p-viewing-bg);
+    box-shadow: inset 0 0 0 1px var(--p-viewing-ring);
+    flex-shrink: 0;
+  }
+
+  .viewing-badge-dot {
+    width: 4.5px;
+    height: 4.5px;
+    border-radius: 99px;
+    background: currentColor;
+  }
+
+  .viewing-badge.is-secondary {
+    color: var(--p-ink-2);
+    background: var(--p-tile);
+    box-shadow: inset 0 0 0 1px var(--p-border);
   }
 
   .tab-row.is-selected .tab-title {
@@ -624,7 +733,11 @@
       <button id="clear-query-btn" class="icon-btn" type="button" title="清除搜尋 (Esc)" style="display:none">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
-      <button id="refresh-btn" class="icon-btn" type="button" title="重新整理 Chrome 分頁">
+      <button id="live-toggle-btn" class="live-toggle-btn is-live" type="button" aria-pressed="true" title="即時刷新已開啟（點擊關閉，仍保留手動刷新）">
+        <span class="live-led" aria-hidden="true"></span>
+        <span>即時</span>
+      </button>
+      <button id="refresh-btn" class="icon-btn" type="button" title="手動重新整理 Chrome 分頁">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
       </button>
     </div>
@@ -744,7 +857,7 @@ container holding the app. Specify either width or maxWidth, and either height o
 <script>
 (() => {
   const { App, applyDocumentTheme, applyHostStyleVariables } = window.__MCP_EXT_APPS__;
-  const app = new App({ name: "Chrome Tabs", version: "1.1.0" }, {});
+  const app = new App({ name: "Chrome Tabs", version: "1.3.0" }, {});
 
   let allTabs = [];
   let windowCount = 1;
@@ -759,6 +872,12 @@ container holding the app. Specify either width or maxWidth, and either height o
   let copiedTabId = null;
   let copyTimer = null;
 
+  let liveRefreshEnabled = true;
+  let pollInFlight = false;
+  let pollTimer = null;
+  let lastListFingerprint = "";
+  let lastBoundSelectionSig = "";
+
   // Cache whether a data-URI favicon is pure dark monochrome on transparent background
   const darkIconAnalysisCache = new Map();
 
@@ -767,6 +886,7 @@ container holding the app. Specify either width or maxWidth, and either height o
   const countPillEl = document.getElementById("count-pill");
   const kbdHintEl = document.getElementById("kbd-hint");
   const clearQueryBtn = document.getElementById("clear-query-btn");
+  const liveToggleBtn = document.getElementById("live-toggle-btn");
   const refreshBtn = document.getElementById("refresh-btn");
   const footerStatusEl = document.getElementById("footer-status");
   const clearAttachBtn = document.getElementById("clear-attach-btn");
@@ -885,9 +1005,11 @@ container holding the app. Specify either width or maxWidth, and either height o
   function buildSiteIconHtml(tab, parsed) {
     const iconSrc = tab.favicon || parsed.fallbackSrc || "";
     const fallbackSvg = SVG_FALLBACKS[parsed.kind] || SVG_FALLBACKS.globe;
-    const activeDot = tab.active === true
-      ? '<span class="active-dot" title="Chrome 目前顯示中的分頁"></span>'
-      : "";
+    const isViewing = tab.viewing === true;
+    const isWinActive = !isViewing && tab.window_active === true && windowCount > 1;
+    const activeDot = isViewing
+      ? '<span class="active-dot is-viewing" title="目前瀏覽器正在查看中的分頁"></span>'
+      : (isWinActive ? '<span class="active-dot" title="另一視窗目前顯示中的分頁"></span>' : "");
     if (!iconSrc) {
       return `
         <div class="site-icon-wrap">
@@ -907,12 +1029,47 @@ container holding the app. Specify either width or maxWidth, and either height o
     `;
   }
 
-  function render() {
+  function updateLiveToggleUi() {
+    liveToggleBtn.classList.toggle("is-live", liveRefreshEnabled);
+    liveToggleBtn.setAttribute("aria-pressed", liveRefreshEnabled ? "true" : "false");
+    liveToggleBtn.title = liveRefreshEnabled
+      ? "即時刷新已開啟（點擊關閉，仍保留手動刷新）"
+      : "即時刷新已關閉（點擊開啟自動追蹤目前瀏覽中分頁）";
+  }
+
+  function computeListFingerprint(filtered) {
+    const modeKey = (isLoading && allTabs.length === 0)
+      ? "loading"
+      : ((errorMsg && allTabs.length === 0) ? ("err:" + errorMsg) : "list");
+    const rowsSig = filtered.map(t => [
+      t.tab_id || "",
+      t.title || "",
+      t.url || "",
+      t.viewing ? 1 : 0,
+      t.window_active ? 1 : 0,
+      t.window_index || 1,
+      t.rule_name || "",
+      (t.favicon || "").length
+    ].join("|")).join(";;");
+    return [
+      modeKey,
+      query.trim(),
+      windowCount,
+      kbFocusIndex,
+      copiedTabId || "",
+      canAttachContext ? 1 : 0,
+      Array.from(selectedIds).sort().join(","),
+      rowsSig
+    ].join("##");
+  }
+
+  function render(forceDom = false) {
     // Update omnibox auxiliary indicators
     const filtered = getFilteredTabs();
     const hasQuery = query.trim().length > 0;
     kbdHintEl.style.display = hasQuery ? "none" : "inline-block";
     clearQueryBtn.style.display = hasQuery ? "inline-flex" : "none";
+    updateLiveToggleUi();
 
     if (allTabs.length > 0) {
       countPillEl.textContent = hasQuery ? `${filtered.length}/${allTabs.length}` : `${allTabs.length}`;
@@ -924,12 +1081,28 @@ container holding the app. Specify either width or maxWidth, and either height o
     refreshBtn.disabled = isLoading;
 
     // Prune stale selected IDs if tabs closed
+    let selectionPruned = false;
     if (allTabs.length > 0 && selectedIds.size > 0) {
       const liveSet = new Set(allTabs.map(t => t.tab_id));
       for (const id of Array.from(selectedIds)) {
-        if (!liveSet.has(id)) selectedIds.delete(id);
+        if (!liveSet.has(id)) {
+          selectedIds.delete(id);
+          selectionPruned = true;
+        }
       }
     }
+    if (selectionPruned) {
+      syncSelectionToHost();
+    }
+
+    if (kbFocusIndex >= filtered.length) kbFocusIndex = filtered.length - 1;
+
+    const nextFp = computeListFingerprint(filtered);
+    if (!forceDom && nextFp === lastListFingerprint) {
+      updateFooter();
+      return;
+    }
+    lastListFingerprint = nextFp;
 
     // State 1: Initial loading
     if (isLoading && allTabs.length === 0) {
@@ -974,14 +1147,12 @@ container holding the app. Specify either width or maxWidth, and either height o
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
           </div>
           <div class="state-title">${hasQuery ? "找不到相符的分頁" : "目前沒有開啟中的分頁"}</div>
-          <p class="state-desc">${hasQuery ? `沒有符合「${esc(query.trim())}」的標題或網域。` : "在 Chrome 開啟網頁後點擊右上角重新整理即可同步。"}</p>
+          <p class="state-desc">${hasQuery ? `沒有符合「${esc(query.trim())}」的標題或網域。` : "在 Chrome 開啟網頁後即可自動同步顯示。"}</p>
         </div>
       `;
       updateFooter();
       return;
     }
-
-    if (kbFocusIndex >= filtered.length) kbFocusIndex = filtered.length - 1;
 
     // Render rows (group by Chrome window only when >1 windows exist and not filtering)
     const showGroups = windowCount > 1 && !hasQuery;
@@ -1016,6 +1187,13 @@ container holding the app. Specify either width or maxWidth, and either height o
       const titleText = t.title || "未命名分頁";
       const mentionText = t.rule_name ? `@${t.rule_name}` : "@chrome-tab";
 
+      let viewingBadgeHtml = "";
+      if (t.viewing === true) {
+        viewingBadgeHtml = '<span class="viewing-badge" title="目前 Chrome 正在查看中的網頁"><span class="viewing-badge-dot"></span>瀏覽中</span>';
+      } else if (t.window_active === true && windowCount > 1) {
+        viewingBadgeHtml = '<span class="viewing-badge is-secondary" title="此 Chrome 視窗目前停留在畫面上的分頁">視窗顯示</span>';
+      }
+
       const checkControl = canAttachContext
         ? `<button class="check-btn" type="button" data-action="multi" data-tab-id="${esc(t.tab_id)}" title="${isSel ? "取消綁定此分頁" : "多選加入此分頁"}">
             ${isSel
@@ -1033,7 +1211,10 @@ container holding the app. Specify either width or maxWidth, and either height o
           <span class="row-accent-bar"></span>
           ${siteIconHtml}
           <div class="tab-main">
-            <div class="tab-title" title="${esc(titleText)}">${esc(titleText)}</div>
+            <div class="tab-title-row">
+              <div class="tab-title" title="${esc(titleText)}">${esc(titleText)}</div>
+              ${viewingBadgeHtml}
+            </div>
             <div class="tab-sub" title="${esc(t.url || "")}">
               <span>${esc(parsed.domain)}</span><span class="tab-sub-path">${esc(parsed.path)}</span>
             </div>
@@ -1197,16 +1378,37 @@ container holding the app. Specify either width or maxWidth, and either height o
     await syncSelectionToHost();
   }
 
-  function ingestPayload(sc) {
+  function ingestPayload(sc, fromBackgroundPoll = false) {
     if (sc && typeof sc === "object") {
       if (Array.isArray(sc.tabs)) allTabs = sc.tabs;
-      if (typeof sc.window_count === "number" && sc.window_count > 0) windowCount = sc.window_count;
+      if (typeof sc.window_count === "number" && sc.window_count >= 0) windowCount = Math.max(1, sc.window_count);
       if (sc.updated_at) updatedAt = sc.updated_at;
       if (sc.auto_update && typeof sc.auto_update === "object") autoUpdateInfo = sc.auto_update;
+      if (sc.prefs && typeof sc.prefs.live_refresh === "boolean") {
+        liveRefreshEnabled = sc.prefs.live_refresh;
+      }
       errorMsg = sc.error || "";
     }
-    isLoading = false;
+    if (!fromBackgroundPoll) {
+      isLoading = false;
+    }
+
+    // 若目前已綁定的分頁發生了網址或標題導覽變更，自動同步更新 Context Pill
+    if (canAttachContext && selectedIds.size > 0) {
+      const sig = allTabs
+        .filter(t => selectedIds.has(t.tab_id))
+        .map(t => `${t.tab_id}:${t.title}:${t.url}`)
+        .join("||");
+      if (sig && sig !== lastBoundSelectionSig) {
+        lastBoundSelectionSig = sig;
+        syncSelectionToHost();
+      }
+    } else {
+      lastBoundSelectionSig = "";
+    }
+
     render();
+    ensurePollingLoop();
   }
 
   async function refreshTabs() {
@@ -1214,11 +1416,57 @@ container holding the app. Specify either width or maxWidth, and either height o
     render();
     try {
       const res = await app.callServerTool({ name: "refresh_chrome_tabs_app", arguments: {} });
-      ingestPayload(res && res.structuredContent);
+      ingestPayload(res && res.structuredContent, false);
     } catch (err) {
       errorMsg = String(err);
       isLoading = false;
       render();
+    }
+  }
+
+  async function pollTabsOnce() {
+    if (!liveRefreshEnabled || document.hidden || isLoading || pollInFlight) return;
+    pollInFlight = true;
+    try {
+      const res = await app.callServerTool({ name: "poll_chrome_tabs_app", arguments: {} });
+      ingestPayload(res && res.structuredContent, true);
+    } catch {
+      // 背景輪詢偶發失敗時靜默略過，不中斷介面互動
+    } finally {
+      pollInFlight = false;
+    }
+  }
+
+  function ensurePollingLoop() {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    if (liveRefreshEnabled) {
+      pollTimer = setInterval(() => {
+        pollTabsOnce();
+      }, 1200);
+    }
+  }
+
+  async function toggleLiveRefresh() {
+    liveRefreshEnabled = !liveRefreshEnabled;
+    updateLiveToggleUi();
+    ensurePollingLoop();
+    try {
+      const res = await app.callServerTool({
+        name: "set_chrome_tabs_prefs_app",
+        arguments: { live_refresh: liveRefreshEnabled }
+      });
+      const saved = res && res.structuredContent && res.structuredContent.prefs;
+      if (saved && typeof saved.live_refresh === "boolean") {
+        liveRefreshEnabled = saved.live_refresh;
+        updateLiveToggleUi();
+        ensurePollingLoop();
+      }
+    } catch {}
+    if (liveRefreshEnabled) {
+      pollTabsOnce();
     }
   }
 
@@ -1237,8 +1485,15 @@ container holding the app. Specify either width or maxWidth, and either height o
     searchEl.focus();
   });
 
+  liveToggleBtn.addEventListener("click", () => toggleLiveRefresh());
   refreshBtn.addEventListener("click", () => refreshTabs());
   clearAttachBtn.addEventListener("click", () => clearAllSelections());
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && liveRefreshEnabled) {
+      pollTabsOnce();
+    }
+  });
 
   listEl.addEventListener("click", (e) => {
     const copyBtn = e.target.closest('[data-action="copy"]');
@@ -1328,7 +1583,7 @@ container holding the app. Specify either width or maxWidth, and either height o
   };
 
   app.ontoolresult = (res) => {
-    ingestPayload(res && res.structuredContent);
+    ingestPayload(res && res.structuredContent, false);
   };
 
   app.onhostcontextchanged = (ctx) => {
@@ -1345,7 +1600,8 @@ container holding the app. Specify either width or maxWidth, and either height o
     }
     const caps = app.getHostCapabilities();
     canAttachContext = Boolean(caps && caps.updateModelContext);
-    render();
+    render(true);
+    ensurePollingLoop();
   }
 
   boot();

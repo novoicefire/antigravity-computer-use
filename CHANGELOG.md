@@ -3,6 +3,16 @@
 
 All notable changes to **antigravity-computer-use** will be documented in this file.
 
+## [1.3.0] - 2026-11-25
+
+### Added
+- **「`● 瀏覽中`」即時分頁標記與 `@chrome-tab-current` 同步**：
+  - 後端代理層 (`bin/cua_window_glow_proxy.py`) 以 Win32 `EnumWindows`（依 Z-Order）與 `GetWindowTextW` 直接讀取各 Chrome 視窗的即時標題（相容多設定檔後綴、音訊與高記憶體提示），在 `< 0.2ms` 內精準標記目前瀏覽器正在查看的分頁 (`viewing: true`) 與多視窗停留分頁 (`window_active: true`)。
+  - 自動同步固定規則 `@chrome-tab-current`（`🟢 目前瀏覽中：<標題>`），在對話框直接輸入 `@current` 即可鎖定當下正在看的網頁。
+- **零閃爍即時刷新（預設開啟）＋ 可記憶開關 ＋ 保留手動刷新 (`ui/chrome_tabs_picker.html`)**：
+  - 新增雙層快取輪詢工具 `poll_chrome_tabs_app`（Win32 `< 1ms` 切換偵測 + 非阻塞背景 CDP 同步）與設定持久化工具 `set_chrome_tabs_prefs_app`（儲存於 `%LOCALAPPDATA%\antigravity-computer-use\ui_prefs.json`，不影響 Git 乾淨狀態）。
+  - 側邊欄頂端同時提供 **`[● 即時]` 自動刷新切換鈕（預設開啟、跨重開記憶）** 與 **手動刷新旋轉按鈕**；前端採用狀態指紋差異比對（Fingerprint Diff），無變動時零 DOM 重繪、懸停與點擊絕不閃爍。
+
 ## [1.2.0] - 2026-11-25
 
 ### Added

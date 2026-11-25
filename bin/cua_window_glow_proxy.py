@@ -256,22 +256,52 @@ def run_safe_auto_update(plugin_root: str, force: bool = False) -> dict:
 
 
 def normalize_browser_title(title: str) -> str:
-    """正規化瀏覽器視窗／分頁標題，移除瀏覽器後綴與未讀數字前綴以便精準比對。"""
+    """正規化瀏覽器視窗／分頁標題，移除瀏覽器後綴、多設定檔名稱、音訊／記憶體狀態與未讀數字前綴以便精準比對。"""
     if not title:
         return ""
     s = title.strip()
-    for suffix in (
+    # 移除 " - Google Chrome" 或 " - Google Chrome - <Profile>" 等尾端資訊
+    for marker in (
         " - Google Chrome",
         " - Microsoft Edge",
         " - Brave",
         " - Chromium",
         " - Arc",
     ):
-        if s.lower().endswith(suffix.lower()):
-            s = s[: -len(suffix)].strip()
+        idx = s.lower().rfind(marker.lower())
+        if idx != -1:
+            s = s[:idx].strip()
             break
+    # 移除 Chrome 分頁音訊／高記憶體附加狀態
+    s = re.sub(
+        r"\s+-\s+(高記憶體用量.*?|High memory usage.*?|Audio playing|音訊播放中|已靜音分頁|Tab muted)$",
+        "",
+        s,
+        flags=re.IGNORECASE,
+    ).strip()
+    # 移除開頭未讀計數如 (94) 或音訊符號
+    s = re.sub(r"^[🔊🔇🔉🔈\s]+", "", s)
     s = re.sub(r"^\(\d+\+?\)\s*", "", s).strip()
     return s.lower()
+
+
+def titles_match_browser_tab(win_title: str, tab_title: str) -> int:
+    """比對視窗標題與分頁標題相符程度，回傳分數 (0=不相符, 100=完全相符, 85=含設定檔後綴相符, 70=長標題前綴相符)。"""
+    norm_win = normalize_browser_title(win_title)
+    norm_tab = normalize_browser_title(tab_title)
+    if not norm_win or not norm_tab:
+        return 0
+    if norm_win == norm_tab:
+        return 100
+    # 處理 "<分頁標題> - <Profile> - Google Chrome" 被截為 "<分頁標題> - <Profile>" 的情況
+    if norm_win.startswith(norm_tab + " - "):
+        return 85
+    if norm_tab.startswith(norm_win + " - "):
+        return 80
+    prefix_len = min(24, len(norm_win), len(norm_tab))
+    if prefix_len >= 8 and norm_win[:prefix_len] == norm_tab[:prefix_len]:
+        return 70
+    return 0
 
 
 def make_tab_rule_slug(index: int, title: str, url: str) -> str:
@@ -394,6 +424,7 @@ class JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
 WNDPROC = ctypes.WINFUNCTYPE(
     ctypes.c_ssize_t, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
 )
+WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
 
 class WNDCLASSEXW(ctypes.Structure):
@@ -454,6 +485,27 @@ user32.GetWindowLongW.restype = ctypes.c_long
 
 user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
 user32.GetWindowTextW.restype = ctypes.c_int
+
+user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+user32.GetClassNameW.restype = ctypes.c_int
+
+user32.EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
+user32.EnumWindows.restype = wintypes.BOOL
+
+user32.IsWindow.argtypes = [wintypes.HWND]
+user32.IsWindow.restype = wintypes.BOOL
+
+user32.IsWindowVisible.argtypes = [wintypes.HWND]
+user32.IsWindowVisible.restype = wintypes.BOOL
+
+user32.IsIconic.argtypes = [wintypes.HWND]
+user32.IsIconic.restype = wintypes.BOOL
+
+user32.GetForegroundWindow.argtypes = []
+user32.GetForegroundWindow.restype = wintypes.HWND
+
+user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+user32.GetWindowThreadProcessId.restype = wintypes.DWORD
 
 user32.SetWindowPos.argtypes = [
     wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT
@@ -579,17 +631,7 @@ class WindowGlowOverlay:
         if not expected_tab_title:
             return True
         live_title = cls._get_window_title(hwnd)
-        norm_live = normalize_browser_title(live_title)
-        norm_exp = normalize_browser_title(expected_tab_title)
-        if not norm_exp or not norm_live:
-            return False
-        if norm_live == norm_exp:
-            return True
-        # 容許長標題截斷（前 24 字元前綴相符）
-        prefix_len = min(24, len(norm_live), len(norm_exp))
-        if prefix_len >= 6 and norm_live[:prefix_len] == norm_exp[:prefix_len]:
-            return True
-        return False
+        return titles_match_browser_tab(live_title, expected_tab_title) > 0
 
     @staticmethod
     def _set_dwm_border(hwnd: int, colorref: int) -> None:
@@ -999,9 +1041,20 @@ class CuaMcpGlowProxy:
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
         )
         self._ui_html_path = os.path.join(self._plugin_root, "ui", "chrome_tabs_picker.html")
+        local_app_data = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~/.gemini")
+        self._prefs_path = os.path.join(local_app_data, "antigravity-computer-use", "ui_prefs.json")
+        self._prefs_lock = threading.Lock()
+        self._ui_prefs: dict = self._load_ui_prefs()
+
         self._favicon_cache: dict[str, tuple[str, float]] = {}
         self._favicon_lock = threading.Lock()
         self._auto_update_result: dict | None = None
+
+        self._cache_lock = threading.Lock()
+        self._cached_tabs_payload: dict | None = None
+        self._last_full_sync_mono: float = 0.0
+        self._bg_sync_in_progress: bool = False
+        self._last_viewing_tab_id: str = ""
 
     # -- Safe stdio helpers -------------------------------------------------
     def _send_to_client(self, obj: dict) -> None:
@@ -1055,6 +1108,193 @@ class CuaMcpGlowProxy:
                 self._internal_pending.pop(req_id, None)
         return None
 
+    # -- UI 偏好設定與 Win32 即時 Chrome 視窗／分頁狀態偵測 (< 0.2ms) --------------
+    def _load_ui_prefs(self) -> dict:
+        defaults = {"live_refresh": True}
+        try:
+            if os.path.isfile(self._prefs_path):
+                with open(self._prefs_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict) and isinstance(data.get("live_refresh"), bool):
+                    defaults["live_refresh"] = data["live_refresh"]
+        except Exception:
+            pass
+        return defaults
+
+    def _save_ui_prefs(self, updates: dict) -> dict:
+        with self._prefs_lock:
+            if isinstance(updates.get("live_refresh"), bool):
+                self._ui_prefs["live_refresh"] = updates["live_refresh"]
+            snapshot = dict(self._ui_prefs)
+            try:
+                os.makedirs(os.path.dirname(self._prefs_path), exist_ok=True)
+                with open(self._prefs_path, "w", encoding="utf-8") as f:
+                    json.dump(snapshot, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+            return snapshot
+
+    def _get_ui_prefs(self) -> dict:
+        with self._prefs_lock:
+            return dict(self._ui_prefs)
+
+    def _enumerate_live_chrome_windows(self, known_hwnds: set[int] | None = None) -> list[dict]:
+        """以 Win32 EnumWindows 依 Z-Order 由上而下掃描目前本機的 Chrome 視窗與即時標題（耗時 < 0.2ms）。"""
+        known = known_hwnds or set()
+        results: list[dict] = []
+        fg_hwnd = int(user32.GetForegroundWindow() or 0)
+        cls_buf = ctypes.create_unicode_buffer(64)
+        title_buf = ctypes.create_unicode_buffer(512)
+
+        def _cb(hwnd: int, _lparam: int) -> bool:
+            h_int = int(hwnd or 0)
+            if h_int <= 0:
+                return True
+            if not user32.IsWindowVisible(wintypes.HWND(h_int)) and h_int not in known:
+                return True
+            cn_len = user32.GetClassNameW(wintypes.HWND(h_int), cls_buf, 64)
+            cls_name = cls_buf.value if cn_len > 0 else ""
+            if cls_name != "Chrome_WidgetWin_1" and h_int not in known:
+                return True
+            t_len = user32.GetWindowTextW(wintypes.HWND(h_int), title_buf, 512)
+            raw_title = title_buf.value if t_len > 0 else ""
+            if not raw_title:
+                return True
+            if h_int not in known and "google chrome" not in raw_title.lower():
+                return True
+            pid_val = wintypes.DWORD(0)
+            user32.GetWindowThreadProcessId(wintypes.HWND(h_int), ctypes.byref(pid_val))
+            results.append(
+                {
+                    "window_id": h_int,
+                    "pid": int(pid_val.value),
+                    "raw_title": raw_title,
+                    "is_iconic": bool(user32.IsIconic(wintypes.HWND(h_int))),
+                    "is_foreground": h_int == fg_hwnd,
+                    "z_rank": len(results),
+                }
+            )
+            return True
+
+        cb_func = WNDENUMPROC(_cb)
+        try:
+            user32.EnumWindows(cb_func, 0)
+        except Exception:
+            pass
+        return results
+
+    def _apply_live_viewing_markers(self, tabs_list: list[dict]) -> tuple[bool, bool]:
+        """
+        根據 Win32 即時視窗標題與 Z-Order 標記各分頁的 viewing (主查看中) 與 window_active (該視窗停留中)。
+        回傳 (viewing_changed, needs_cdp_resync)。
+        """
+        if not tabs_list:
+            live_wins = self._enumerate_live_chrome_windows()
+            return (False, len(live_wins) > 0)
+
+        known_hwnds = {int(t["window_id"]) for t in tabs_list if t.get("window_id")}
+        live_wins = self._enumerate_live_chrome_windows(known_hwnds)
+        win_by_id = {w["window_id"]: w for w in live_wins}
+
+        # 檢查視窗集合是否變化（新開或關閉整個 Chrome 視窗）
+        live_chrome_ids = {w["window_id"] for w in live_wins if "google chrome" in w["raw_title"].lower() or w["window_id"] in known_hwnds}
+        needs_resync = (live_chrome_ids != known_hwnds)
+
+        # 決定目前最上層正在瀏覽的主 Chrome 視窗：優先取非最小化之最高 Z-Order 視窗，若全數最小化則取最上層者
+        ordered_known = [w for w in live_wins if w["window_id"] in known_hwnds]
+        non_iconic = [w for w in ordered_known if not w["is_iconic"]]
+        primary_wid = (
+            non_iconic[0]["window_id"]
+            if non_iconic
+            else (ordered_known[0]["window_id"] if ordered_known else 0)
+        )
+
+        # 清除舊標記
+        for t in tabs_list:
+            t["viewing"] = False
+            t["window_active"] = False
+            t["active"] = False
+
+        # 逐視窗找出與 Win32 即時視窗標題最吻合的分頁
+        tabs_by_win: dict[int, list[dict]] = {}
+        for t in tabs_list:
+            wid = int(t.get("window_id") or 0)
+            tabs_by_win.setdefault(wid, []).append(t)
+
+        new_viewing_tab_id = ""
+        for wid, wtabs in tabs_by_win.items():
+            winfo = win_by_id.get(wid)
+            if not winfo:
+                needs_resync = True
+                continue
+            raw_win_title = winfo["raw_title"]
+            best_tab = None
+            best_score = 0
+            for t in wtabs:
+                score = titles_match_browser_tab(raw_win_title, t.get("title") or "")
+                if score > best_score:
+                    best_score = score
+                    best_tab = t
+            if best_tab is not None and best_score > 0:
+                best_tab["window_active"] = True
+                best_tab["active"] = True
+                if wid == primary_wid:
+                    best_tab["viewing"] = True
+                    new_viewing_tab_id = str(best_tab.get("tab_id") or "")
+            else:
+                # 該 Chrome 視窗目前顯示的標題不在快取清單中（可能剛開新分頁或網頁導覽換標題）
+                needs_resync = True
+
+        viewing_changed = (new_viewing_tab_id != self._last_viewing_tab_id)
+        self._last_viewing_tab_id = new_viewing_tab_id
+        return (viewing_changed, needs_resync)
+
+    @staticmethod
+    def _build_current_tab_rule_content(tab: dict) -> str:
+        title = (tab.get("title") or "未命名分頁").strip()
+        url = (tab.get("url") or "").strip()
+        safe_desc_title = title.replace('"', "'").replace("\n", " ")[:70]
+        safe_desc_url = url.replace('"', "'").replace("\n", " ")[:90]
+        return (
+            "---\n"
+            "trigger: manual\n"
+            f'description: "🟢 目前瀏覽中：{safe_desc_title} ({safe_desc_url})"\n'
+            "---\n"
+            "<!-- 自動同步之目前瀏覽中 Chrome 分頁規則 (trigger: manual，僅於手動 @ 選取時載入) -->\n"
+            "請使用 `computer-use` 插件的 `cua-driver` 瀏覽器工具在背景操作使用者「目前正在查看」的這個 Chrome 分頁"
+            "（切回此分頁時會自動顯示同色外框與游標，切走時自動隱藏）：\n"
+            f"- **分頁標題**：{title}\n"
+            f"- **分頁網址**：{url}\n"
+            f"- **Chrome 視窗**：`pid={tab.get('pid')}`, `window_id={tab.get('window_id')}`\n"
+            f"- **綁定識別碼**：`target_id={tab.get('target_id')}`, `tab_id={tab.get('tab_id')}`\n"
+        )
+
+    def _sync_current_viewing_rule_fast(self, tabs_list: list[dict]) -> None:
+        """當使用者在既有分頁間切換時，極速更新 ~/.gemini/config/rules/chrome-tab-current.md。"""
+        try:
+            current_tab = next(
+                (t for t in tabs_list if t.get("viewing")),
+                next((t for t in tabs_list if t.get("window_active")), None),
+            )
+            fpath = os.path.join(self._rules_dir, "chrome-tab-current.md")
+            if not current_tab:
+                if os.path.isfile(fpath):
+                    os.remove(fpath)
+                return
+            os.makedirs(self._rules_dir, exist_ok=True)
+            content = self._build_current_tab_rule_content(current_tab)
+            if os.path.isfile(fpath):
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        if f.read() == content:
+                            return
+                except Exception:
+                    pass
+            with open(fpath, "w", encoding="utf-8") as f:
+                f.write(content)
+        except Exception:
+            pass
+
     # -- @ 選單規則同步 (~/.gemini/config/rules/chrome-tab-*.md) -------------
     def _sync_chrome_tab_rules(self, tabs_list: list[dict]) -> int:
         """將開啟中的 Chrome 分頁同步為 trigger: manual 規則檔，支援聊天框直接 @ 選取且不選取時 0 Token。"""
@@ -1092,6 +1332,14 @@ class CuaMcpGlowProxy:
                 )
                 desired_files[f"{rule_name}.md"] = content
 
+            # 額外同步固定名稱 @chrome-tab-current 指向目前正在瀏覽的分頁
+            current_tab = next(
+                (t for t in tabs_list if t.get("viewing")),
+                next((t for t in tabs_list if t.get("window_active")), None),
+            )
+            if current_tab:
+                desired_files["chrome-tab-current.md"] = self._build_current_tab_rule_content(current_tab)
+
             # 寫入或更新現有分頁規則（內容未變就不重複寫碟）
             for fname, content in desired_files.items():
                 fpath = os.path.join(self._rules_dir, fname)
@@ -1120,7 +1368,31 @@ class CuaMcpGlowProxy:
         except Exception:
             return 0
 
-    def _sync_all_chrome_tabs(self) -> dict:
+    def _attach_cached_favicons_fast(self, tabs: list[dict]) -> None:
+        """從記憶體快取中 0ms 補上已知網域的 Favicon（不發起網路請求）。"""
+        if not tabs:
+            return
+        now_ts = time.time()
+        with self._favicon_lock:
+            for t in tabs:
+                if t.get("favicon"):
+                    continue
+                url = t.get("url") or ""
+                try:
+                    parsed = urllib.parse.urlparse(url)
+                    scheme = (parsed.scheme or "").lower()
+                    netloc = parsed.netloc or ""
+                    hostname = (parsed.hostname or "").lower()
+                except Exception:
+                    continue
+                if scheme not in ("http", "https") or not hostname:
+                    continue
+                cache_key = f"{scheme}://{netloc}" if hostname in ("localhost", "127.0.0.1", "::1") else hostname
+                cached = self._favicon_cache.get(cache_key)
+                if cached and now_ts < cached[1] and cached[0]:
+                    t["favicon"] = cached[0]
+
+    def _sync_all_chrome_tabs(self, include_favicons: bool = False) -> dict:
         """透過已授權的 cua-driver 內部通道抓取所有開啟中的 Chrome 分頁並同步至 @ 規則與面板。"""
         with self._sync_lock:
             now_str = datetime.datetime.now().strftime("%H:%M:%S")
@@ -1133,12 +1405,17 @@ class CuaMcpGlowProxy:
                 timeout=6.0,
             )
             if not lw_resp:
-                return {
+                empty_payload = {
                     "tabs": [],
+                    "window_count": 0,
                     "synced_rules_count": 0,
                     "updated_at": now_str,
                     "error": "無法連線至 cua-driver 列出 Chrome 視窗。",
                 }
+                with self._cache_lock:
+                    self._cached_tabs_payload = empty_payload
+                    self._last_full_sync_mono = time.monotonic()
+                return dict(empty_payload)
 
             res_obj = lw_resp.get("result") or {}
             sc = res_obj.get("structuredContent") if isinstance(res_obj, dict) else None
@@ -1177,13 +1454,18 @@ class CuaMcpGlowProxy:
                                 windows.append({"pid": p_val, "window_id": w_val})
 
             if not windows:
-                return {
+                self._sync_chrome_tab_rules([])
+                no_win_payload = {
                     "tabs": [],
                     "window_count": 0,
                     "synced_rules_count": 0,
                     "updated_at": now_str,
                     "error": "目前沒有偵測到開啟中的 Google Chrome 視窗。",
                 }
+                with self._cache_lock:
+                    self._cached_tabs_payload = no_win_payload
+                    self._last_full_sync_mono = time.monotonic()
+                return dict(no_win_payload)
 
             for win_idx, win in enumerate(windows, start=1):
                 pid = win.get("pid")
@@ -1248,14 +1530,27 @@ class CuaMcpGlowProxy:
                     if c_list and isinstance(c_list[0], dict):
                         last_error = c_list[0].get("text") or last_error
 
+            self._apply_live_viewing_markers(collected_tabs)
+            if include_favicons:
+                self._populate_tab_favicons(collected_tabs)
+            else:
+                self._attach_cached_favicons_fast(collected_tabs)
+
             synced_count = self._sync_chrome_tab_rules(collected_tabs)
-            return {
-                "tabs": collected_tabs,
+            result_payload = {
+                "tabs": [dict(t) for t in collected_tabs],
                 "window_count": len(windows),
                 "synced_rules_count": synced_count,
                 "updated_at": now_str,
                 "error": "" if collected_tabs else last_error,
             }
+            with self._cache_lock:
+                self._cached_tabs_payload = {
+                    **result_payload,
+                    "tabs": [dict(t) for t in collected_tabs],
+                }
+                self._last_full_sync_mono = time.monotonic()
+            return result_payload
 
     def _background_tab_sync_loop(self) -> None:
         """背景輕量同步執行緒：啟動後自動同步一次，之後每 15 秒同步新開／關閉的 Chrome 分頁。"""
@@ -1331,6 +1626,38 @@ class CuaMcpGlowProxy:
                 "inputSchema": {
                     "type": "object",
                     "properties": {},
+                    "additionalProperties": False,
+                },
+                "_meta": {
+                    "ui": {
+                        "visibility": ["app"],
+                    }
+                },
+            },
+            {
+                "name": "poll_chrome_tabs_app",
+                "title": "Poll Chrome Tabs State",
+                "description": "App-only ultra-fast (<1ms Win32 + async cache) live tab state poller.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": False,
+                },
+                "_meta": {
+                    "ui": {
+                        "visibility": ["app"],
+                    }
+                },
+            },
+            {
+                "name": "set_chrome_tabs_prefs_app",
+                "title": "Set Chrome Tabs UI Preferences",
+                "description": "App-only helper to persist Chrome Tabs UI preferences such as live_refresh.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "live_refresh": {"type": "boolean"},
+                    },
                     "additionalProperties": False,
                 },
                 "_meta": {
@@ -1442,16 +1769,102 @@ class CuaMcpGlowProxy:
                     if uri:
                         t["favicon"] = uri
 
-    def _handle_virtual_tool_call(self, req_id: object, tool_name: str) -> None:
-        payload = self._sync_all_chrome_tabs()
+    def _trigger_async_full_sync(self) -> None:
+        with self._cache_lock:
+            if self._bg_sync_in_progress:
+                return
+            self._bg_sync_in_progress = True
+
+        def _worker() -> None:
+            try:
+                self._sync_all_chrome_tabs(include_favicons=True)
+            except Exception:
+                pass
+            finally:
+                with self._cache_lock:
+                    self._bg_sync_in_progress = False
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _handle_virtual_tool_call(self, req_id: object, tool_name: str, args: dict | None = None) -> None:
+        if tool_name == "set_chrome_tabs_prefs_app":
+            saved = self._save_ui_prefs(args if isinstance(args, dict) else {})
+            self._send_to_client(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps(saved, ensure_ascii=False)}],
+                        "structuredContent": {"prefs": saved},
+                    },
+                }
+            )
+            return
+
+        if tool_name == "poll_chrome_tabs_app":
+            with self._cache_lock:
+                cached = self._cached_tabs_payload
+                last_mono = self._last_full_sync_mono
+
+            if cached is None:
+                payload = self._sync_all_chrome_tabs(include_favicons=True)
+            else:
+                tabs_copy = [dict(t) for t in (cached.get("tabs") or [])]
+                self._attach_cached_favicons_fast(tabs_copy)
+                viewing_changed, needs_resync = self._apply_live_viewing_markers(tabs_copy)
+                updated_at = cached.get("updated_at") or datetime.datetime.now().strftime("%H:%M:%S")
+                if viewing_changed:
+                    updated_at = datetime.datetime.now().strftime("%H:%M:%S")
+                    self._sync_current_viewing_rule_fast(tabs_copy)
+                    with self._cache_lock:
+                        if self._cached_tabs_payload is not None:
+                            self._cached_tabs_payload["tabs"] = [dict(t) for t in tabs_copy]
+                            self._cached_tabs_payload["updated_at"] = updated_at
+
+                age = time.monotonic() - last_mono
+                if (needs_resync or age >= 3.2) and self._client_inflight == 0:
+                    self._trigger_async_full_sync()
+
+                payload = {
+                    "tabs": tabs_copy,
+                    "window_count": cached.get("window_count", 1),
+                    "synced_rules_count": cached.get("synced_rules_count", 0),
+                    "updated_at": updated_at,
+                    "error": cached.get("error", ""),
+                }
+
+            payload["prefs"] = self._get_ui_prefs()
+            if self._auto_update_result and self._auto_update_result.get("status") == "updated":
+                payload["auto_update"] = self._auto_update_result
+
+            self._send_to_client(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": "ok"}],
+                        "structuredContent": payload,
+                    },
+                }
+            )
+            return
+
+        payload = self._sync_all_chrome_tabs(include_favicons=True)
         tabs = payload.get("tabs") or []
-        self._populate_tab_favicons(tabs)
+        payload["prefs"] = self._get_ui_prefs()
         if self._auto_update_result and self._auto_update_result.get("status") == "updated":
             payload["auto_update"] = self._auto_update_result
         if tabs:
-            lines = [f"已同步 {len(tabs)} 個開啟中的 Chrome 分頁（皆可於聊天框以 @chrome-tab 選取）："]
+            lines = [
+                f"已同步 {len(tabs)} 個開啟中的 Chrome 分頁（皆可於聊天框以 @chrome-tab 選取，或用 @chrome-tab-current 指定目前瀏覽中分頁）："
+            ]
             for i, t in enumerate(tabs, start=1):
-                mark = " [目前檢視]" if t.get("active") is True else " [背景分頁]"
+                if t.get("viewing") is True:
+                    mark = " [目前瀏覽中]"
+                elif t.get("window_active") is True:
+                    mark = " [視窗停留中]"
+                else:
+                    mark = " [背景分頁]"
                 rtag = f" (@{t.get('rule_name')})" if t.get("rule_name") else ""
                 lines.append(
                     f"{i}. {t.get('title')}{mark}{rtag}\n"
@@ -1682,10 +2095,19 @@ class CuaMcpGlowProxy:
                 with self._state_lock:
                     self._last_client_meta = dict(in_meta)
 
-            if tool_name in ("open_chrome_tabs_picker", "refresh_chrome_tabs_app") and req_id is not None:
+            if (
+                tool_name
+                in (
+                    "open_chrome_tabs_picker",
+                    "refresh_chrome_tabs_app",
+                    "poll_chrome_tabs_app",
+                    "set_chrome_tabs_prefs_app",
+                )
+                and req_id is not None
+            ):
                 threading.Thread(
                     target=self._handle_virtual_tool_call,
-                    args=(req_id, tool_name),
+                    args=(req_id, tool_name, args),
                     daemon=True,
                 ).start()
                 return
