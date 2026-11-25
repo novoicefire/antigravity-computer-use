@@ -12,13 +12,14 @@ Use this skill when the user asks to check, set up, repair, customize, or test b
 
 This plugin combines two non-intrusive control planes plus a Win32/DWM rounded glow border proxy so the agent never hijacks the user's physical mouse cursor:
 
-1. **Background Windows GUI Control + Same-Color Window Glow Proxy (`cua-driver` + `bin/cua_window_glow_proxy.py`)**:
+1. **Background Windows GUI Control + High-DPI Tab-Aware Glow Proxy (`cua-driver` + `bin/cua_window_glow_proxy.py` + `bin/cua_cdp_rescue.py`)**:
    - Uses Windows UI Automation (`IUIAutomationInvokePattern` / `ValuePattern`) and background window messages (`PostMessage`) with `delivery_mode: "background"`.
    - `cua_window_glow_proxy.py` wraps `cua-driver.exe mcp --grant existing-profile` in a Win32 Job Object (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) to prevent orphaned processes.
-   - Automatically extracts the target `window_id` (and maps `snapshot_id` / `element_token` back to `window_id`) and renders an 8px-rounded anti-aliased neon border matching the exact RGB color of `cua-driver`'s virtual cursor (`#4CCCE0` for `session: "agy-cursor"`, `#5EC0E8` for `session: "default"`).
-   - Pins both the glowing window border and `Cua.AgentCursorOverlay` immediately above the target `window_id` in the Win32 Z-order (`SetWindowPos`) so they never bleed through onto foreground windows covering the target.
-2. **Logged-in Chrome Control (`chrome-devtools` MCP with `--autoConnect` & `cua-driver` Browser Tools)**:
-   - Connects directly to the user's active Chrome profile via Chrome DevTools Protocol (CDP), retaining all cookies, logins, and extensions.
+   - Renders a DPI-adaptive inward + outward rounded neon aura (clearly visible even on maximized 2.8K / 4K 200%-DPI screens) matching the exact RGB color of `cua-driver`'s virtual cursor (`#4CCCE0` for `session: "agy-cursor"`, `#5EC0E8` for `session: "default"`).
+   - Pins both the glowing window border and cursor overlays (`Cua.AgentCursorOverlay`, `Cua.ProxyCursorOverlay`) immediately above the target `window_id` in the Win32 Z-order (`SetWindowPos`) and runs a **60 FPS (`16ms`) cross-tab cursor guard** so switching tabs or opening a New Tab hides both immediately without cross-tab leakage.
+   - Automatically heals stale/restarted `target_id`/`tab_id` bindings (`tab_bindings_cache.json`), retries `browser_ref_stale` snapshots seamlessly, and falls back to `cua_cdp_rescue.py` (pure-stdlib localhost CDP WebSocket) for multi-window `heuristic` cases and `<canvas>` apps like Chrome Remote Desktop.
+2. **Logged-in Chrome DevTools Control (`chrome-devtools` MCP with `--devtools-proxy` & `--autoConnect`)**:
+   - Connects directly to the user's active Chrome profile via Chrome DevTools Protocol (CDP), retaining all cookies, logins, and extensions, while `bin/cua_devtools_glow_proxy.py` provides the same Tab-Aware rounded neon border and virtual cursor feedback.
 
 ## 2. Diagnostic Checklist
 
@@ -49,7 +50,8 @@ py -3 "$env:USERPROFILE\.gemini\config\plugins\computer-use\bin\cua_window_glow_
 
 To customize the border color or hold duration, edit `env` in `~/.gemini/config/plugins/computer-use/mcp_config.json`:
 - `"CUA_GLOW_COLOR"`: `"auto"` (default, automatically matches `cua-driver`'s virtual cursor color for the active session) or any 6-digit hex color such as `"#A855F7"`.
-- `"CUA_GLOW_HOLD_SEC"`: `"3.5"` (seconds to keep the glow border visible after the last action before fading out).
+- `"CUA_GLOW_HOLD_SEC"`: `"3.5"` (seconds to keep the glow border visible on desktop apps; browser tabs hold for at least `9.0`s with foreground-reveal timing).
+- `"CUA_EXCLUDE_FROM_CAPTURE"`: `"false"` (default, allows screenshots and recordings to capture the glow border and proxy cursor; set to `"true"` to enable `WDA_EXCLUDEFROMCAPTURE`).
 
 ### C. Verify Logged-in Chrome (`--autoConnect`)
 
@@ -71,4 +73,4 @@ To customize the border color or hold duration, edit `env` in `~/.gemini/config/
      powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.gemini\config\plugins\computer-use\scripts\update.ps1"
      ```
    - Add `-UpgradeDriver` to also upgrade `cua-driver.exe` to the latest upstream release.
-   - If `mcp_config.json` or `bin/cua_window_glow_proxy.py` changed, instruct the user to toggle `[computer-use](customization://computer-use)` off and back on (or restart Antigravity) to reload the MCP server.
+   - If `mcp_config.json` or any `bin/*.py` module changed, instruct the user to toggle `[computer-use](customization://computer-use)` off and back on (or restart Antigravity) to reload the MCP server.

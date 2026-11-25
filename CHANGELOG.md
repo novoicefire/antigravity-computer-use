@@ -3,6 +3,26 @@
 
 All notable changes to **antigravity-computer-use** will be documented in this file.
 
+## [1.4.0] - 2026-11-26
+
+### Added
+- **多視窗 `heuristic` 與 Chrome 遠端桌面 `<canvas>` 自動 CDP 救援通道 (`bin/cua_cdp_rescue.py`)**：
+  - 當同時開啟多個最大化 Chrome 視窗、高 DPI 縮放或遠端桌面服務導致上游 `cua-driver.exe` 落入 `heuristic (title-only)` 唯讀限制時，代理層自動無縫切換至本機 `DevToolsActivePort` WebSocket 執行背景截圖 (`Page.captureScreenshot`)、`<canvas>` 像素座標滑鼠點擊／雙擊／右鍵／拖曳／滾輪 (`Input.dispatchMouseEvent`) 與鍵盤輸入 (`Input.dispatchKeyEvent`)，並同步驅動同色圓角螢光外框與 `Cua.ProxyCursorOverlay` 分頁感知虛擬游標，全程不搶本機實體滑鼠。
+- **`chrome-devtools` MCP 視覺外框與虛擬游標代理 (`bin/cua_devtools_glow_proxy.py`、`mcp_config.json`)**：
+  - 為 `chrome-devtools-mcp --autoConnect` 掛載 `--devtools-proxy`（含 Win32 Job Object 防孤兒行程），自動追蹤 `pageId` 與 `[selected]` 分頁標題，使 DevTools 操作同樣具備 Tab-Aware 同色圓角螢光外框 (`#4CCCE0`) 與虛擬游標回饋。
+
+### Fixed
+- **修正高解析度（2.8K / 4K 200% DPI）最大化視窗光暈過細與螢幕截圖不可見問題 (`bin/cua_window_glow_proxy.py`、`bin/cua_cdp_rescue.py`)**：
+  - 根因：最大化視窗貼齊螢幕邊緣時，純外側光暈會被螢幕邊界與工作列裁切，在 `2880×1620`（200% DPI）螢幕上僅剩極細實心線；且先前預設啟用 `WDA_EXCLUDEFROMCAPTURE` 導致 `get_desktop_state` 截圖無法拍到外框。
+  - 修正：改為 **DPI 自適應雙向圓角霓虹光暈**（200% DPI 下具備 `8px` 高亮白芯青色邊框 + 向內平滑漸層 `60px` 霓虹內光暈 + 向外 `28px` 外光暈），最大化視窗亦能完整呈現飽滿柔和光暈且點擊完全穿透；並將 `CUA_EXCLUDE_FROM_CAPTURE` 預設改為 `false` 以便截圖／錄影直接驗證。
+  - 新增「前景揭曉計時（Foreground-Reveal Hold）」：當 Chrome 在背景被 Antigravity 蓋住時暫緩倒數，待使用者切回目標分頁才開始計算完整 9 秒呼吸光暈。
+- **徹底阻絕跨分頁／開新分頁（`Ctrl+T`「新分頁」）虛擬游標與外框殘留 Bug (`bin/cua_window_glow_proxy.py`、`bin/cua_cdp_rescue.py`)**：
+  - 新增 **60 FPS（`16ms`）全時段跨分頁游標防漏守衛（`_guard_browser_hwnd`）**，即使外框已淡出或 `cua-driver` 游標仍在停留時間內，只要使用者切分頁或開啟「新分頁」，`<16ms` 內立即強制隱藏 `Cua.AgentCursorOverlay` 與 `Cua.ProxyCursorOverlay`。
+  - 嚴格禁止瀏覽器操作在缺少分頁標題時退化為全視窗顯示（`is_browser=True` 強制要求三層快取核對 `expected_tab_title`），並移除盲目讀取視窗標題的寬限期，改為僅接受該 `tab_id` 回傳的真實標題更新。
+- **修正離螢幕輔助視窗干擾、跨 MCP 重啟綁定失效與 `browser_ref_stale` 自動重試 (`bin/cua_window_glow_proxy.py`)**：
+  - 過濾不可見／離螢幕背景輔助視窗（如 `Chrome 遠端桌面 [off-screen]`），避免洗掉主視窗 `target_id`，同時完整保留可見的遠端桌面 PWA 視窗與 `remotedesktop.google.com` 分頁。
+  - 新增 `tab_bindings_cache.json` 跨重啟持久化快取、漏傳 `session` 自動補齊 `"agy-cursor"`、背景重綁閒置門檻拉長至 `90s`，以及遇到 `browser_ref_stale` 時在 `0.2s` 內自動重抓快照依 `(role, name)` 無縫重試。
+
 ## [1.3.1] - 2026-11-25
 
 ### Fixed

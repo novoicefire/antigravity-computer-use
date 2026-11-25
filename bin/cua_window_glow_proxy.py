@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import concurrent.futures
+import copy
 import ctypes
 from ctypes import wintypes
 import datetime
@@ -25,6 +26,12 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+
+_BIN_DIR = os.path.dirname(os.path.abspath(__file__))
+if _BIN_DIR not in sys.path:
+    sys.path.insert(0, _BIN_DIR)
+
+from cua_cdp_rescue import CdpHeuristicRescueManager, ProxyVirtualCursorOverlay
 
 # ---------------------------------------------------------------------------
 # Win32 / DWM / Job Object Constants & Structures
@@ -244,7 +251,13 @@ def run_safe_auto_update(plugin_root: str, force: bool = False) -> dict:
     r_after = _git(["rev-parse", "--short", "HEAD"], timeout=5.0)
     after_rev = (r_after.stdout or "").strip() if r_after and r_after.returncode == 0 else ""
     restart_needed = any(
-        f in ("bin/cua_window_glow_proxy.py", "mcp_config.json") for f in changed_files
+        f in (
+            "bin/cua_window_glow_proxy.py",
+            "bin/cua_cdp_rescue.py",
+            "bin/cua_devtools_glow_proxy.py",
+            "mcp_config.json",
+        )
+        for f in changed_files
     )
     return {
         "status": "updated",
@@ -329,14 +342,21 @@ def make_tab_rule_slug(index: int, title: str, url: str) -> str:
     return name[:52]
 
 
-# 外框幾何與動畫參數
-GLOW_SPREAD = 10
-CORE_THICKNESS = 3
-CORNER_RADIUS = 8
-TOTAL_PAD = GLOW_SPREAD + CORE_THICKNESS
-IDLE_HOLD_SEC = float(os.environ.get("CUA_GLOW_HOLD_SEC", "3.5"))
-BROWSER_TAB_HOLD_SEC = max(IDLE_HOLD_SEC, 8.0)
-FADE_OUT_SEC = 0.6
+# 外框基準幾何參數（100% DPI 基準值，執行時自動依目標視窗實際 DPI 如 150%/200% 等比放大，確保 2.8K/4K 螢幕與最大化視窗皆有飽滿霓虹內外光暈）
+BASE_OUTER_GLOW = 14
+BASE_CORE_THICKNESS = 4
+BASE_INNER_GLOW = 30
+BASE_CORNER_RADIUS = 10
+IDLE_HOLD_SEC = float(os.environ.get("CUA_GLOW_HOLD_SEC", "5.0"))
+BROWSER_TAB_HOLD_SEC = max(IDLE_HOLD_SEC, 9.0)
+PENDING_REVEAL_MAX_SEC = 25.0
+FADE_OUT_SEC = 0.75
+EXCLUDE_OVERLAY_FROM_CAPTURE = os.environ.get("CUA_EXCLUDE_FROM_CAPTURE", "false").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
 
 
 class POINT(ctypes.Structure):
@@ -574,13 +594,18 @@ class WindowGlowOverlay:
         self._lock = threading.Lock()
         self._target_hwnd: int = 0
         self._expected_tab_title: str = ""
+        self._is_browser_target: bool = False
+        self._guard_browser_hwnd: int = 0
+        self._guard_browser_tab_title: str = ""
         self._hold_sec: float = IDLE_HOLD_SEC
         self._last_active_ts: float = 0.0
+        self._trigger_ts: float = 0.0
+        self._seen_in_foreground: bool = False
         self._prev_dwm_hwnd: int = 0
         self._dwm_colored_hwnd: int = 0
         self._glow_hwnd: int = 0
         self._color_rgb: tuple[int, int, int] = resolve_cua_cursor_color("agy-cursor")
-        self._last_cache_key: tuple[int, int, tuple[int, int, int]] = (0, 0, (0, 0, 0))
+        self._last_cache_key: tuple[int, int, tuple[int, int, int], int] = (0, 0, (0, 0, 0), 96)
         self._dib_hdc = None
         self._dib_bmp = None
         self._dib_old = None
@@ -594,10 +619,20 @@ class WindowGlowOverlay:
         hwnd: int,
         session_name: str | None = "agy-cursor",
         expected_tab_title: str = "",
+        is_navigation: bool = False,
+        is_browser: bool = False,
     ) -> None:
         if not hwnd or hwnd <= 0:
             return
+        clean_expected = expected_tab_title.strip()
+        # 安全鐵律：若為瀏覽器分頁操作卻拿不到分頁標題，絕不可退化為「全視窗無差別顯示」，避免外框／游標洩漏到新分頁！
+        if is_browser and not clean_expected:
+            self._hide_cursor_overlays_for_unselected_tab()
+            return
         rgb = resolve_cua_cursor_color(session_name)
+        was_matching = True
+        if clean_expected and user32.IsWindow(wintypes.HWND(hwnd)):
+            was_matching = self._is_expected_tab_active(hwnd, clean_expected)
         with self._lock:
             if not user32.IsWindow(wintypes.HWND(hwnd)):
                 return
@@ -605,11 +640,34 @@ class WindowGlowOverlay:
                 self._restore_dwm_border(self._prev_dwm_hwnd)
                 self._dwm_colored_hwnd = 0
             self._target_hwnd = hwnd
-            self._expected_tab_title = expected_tab_title.strip()
+            self._expected_tab_title = clean_expected
+            self._is_browser_target = bool(is_browser or clean_expected)
+            if clean_expected:
+                self._guard_browser_hwnd = hwnd
+                self._guard_browser_tab_title = clean_expected
+            elif not is_browser and hwnd != self._guard_browser_hwnd:
+                # 切換至一般桌面原生視窗（如 LINE / Notepad）時解除舊瀏覽器守衛，避免誤隱藏原生視窗虛擬游標
+                self._guard_browser_hwnd = 0
+                self._guard_browser_tab_title = ""
             self._hold_sec = BROWSER_TAB_HOLD_SEC if self._expected_tab_title else IDLE_HOLD_SEC
             self._color_rgb = rgb
-            self._last_active_ts = time.monotonic()
+            now_m = time.monotonic()
+            self._last_active_ts = now_m
+            self._trigger_ts = now_m
+            fg = int(user32.GetForegroundWindow() or 0)
+            self._seen_in_foreground = (fg == hwnd) and was_matching
             self._prev_dwm_hwnd = hwnd
+
+    def update_expected_tab_title(self, hwnd: int, new_tab_title: str) -> None:
+        """僅由明確屬於該 tab_id 的 CDP/MCP 回傳更新預期標題（絕不盲目複製使用者手動切換之視窗標題）。"""
+        clean = new_tab_title.strip()
+        if not clean or hwnd <= 0:
+            return
+        with self._lock:
+            if self._target_hwnd == hwnd and self._is_browser_target:
+                self._expected_tab_title = clean
+            if self._guard_browser_hwnd == hwnd:
+                self._guard_browser_tab_title = clean
 
     def shutdown(self) -> None:
         self._running = False
@@ -670,10 +728,11 @@ class WindowGlowOverlay:
 
     def _find_cua_cursor_overlays(self) -> list[int]:
         found: list[int] = []
-        curr = user32.FindWindowExW(None, None, "Cua.AgentCursorOverlay", None)
-        while curr:
-            found.append(int(curr))
-            curr = user32.FindWindowExW(None, wintypes.HWND(curr), "Cua.AgentCursorOverlay", None)
+        for cls_name in ("Cua.AgentCursorOverlay", "Cua.ProxyCursorOverlay"):
+            curr = user32.FindWindowExW(None, None, cls_name, None)
+            while curr:
+                found.append(int(curr))
+                curr = user32.FindWindowExW(None, wintypes.HWND(curr), cls_name, None)
         return found
 
     def _hide_cursor_overlays_for_unselected_tab(self) -> None:
@@ -739,29 +798,59 @@ class WindowGlowOverlay:
             )
 
     @staticmethod
-    def _premul_pixel_bytes(d_from_outer: float, rgb: tuple[int, int, int]) -> bytes:
-        if d_from_outer < 0.0 or d_from_outer >= TOTAL_PAD:
+    def _scaled_metrics(dpi: int) -> tuple[int, int, int, int, int]:
+        scale = max(1.0, min(3.0, float(dpi or 96) / 96.0))
+        outer_g = max(10, int(round(BASE_OUTER_GLOW * scale)))
+        core_t = max(3, int(round(BASE_CORE_THICKNESS * scale)))
+        inner_g = max(24, int(round(BASE_INNER_GLOW * scale)))
+        corner_r = max(8, int(round(BASE_CORNER_RADIUS * scale)))
+        return (outer_g, core_t, inner_g, corner_r, outer_g + core_t + inner_g)
+
+    @staticmethod
+    def _premul_pixel_bytes(
+        d_from_outer: float,
+        rgb: tuple[int, int, int],
+        outer_g: int,
+        core_t: int,
+        inner_g: int,
+    ) -> bytes:
+        total_pad = outer_g + core_t + inner_g
+        if d_from_outer < 0.0 or d_from_outer >= total_pad:
             return b"\x00\x00\x00\x00"
         nr, ng, nb = rgb
-        if d_from_outer < GLOW_SPREAD:
-            ratio = (d_from_outer + 1.0) / float(GLOW_SPREAD)
-            alpha = int(145 * (ratio ** 1.75))
+        if d_from_outer < outer_g:
+            # 視窗外側漸層霓虹光暈（浮動視窗可見）
+            ratio = (d_from_outer + 1.0) / float(outer_g)
+            alpha = int(205 * (ratio ** 1.45))
             r, g, b = nr, ng, nb
+        elif d_from_outer < outer_g + core_t:
+            # 視窗內緣高亮白芯青色霓虹邊框（最大化視窗亦 100% 完整顯示）
+            alpha = 255
+            r = min(255, nr + 95)
+            g = min(255, ng + 75)
+            b = min(255, nb + 75)
         else:
-            alpha = 245
-            r = min(255, nr + 85)
-            g = min(255, ng + 65)
-            b = min(255, nb + 65)
+            # 視窗內側大幅度漸層內光暈（最大化、深色或淺色網頁皆飽滿清晰且完全不擋點擊）
+            inner_offset = d_from_outer - float(outer_g + core_t)
+            remain = max(0.0, 1.0 - (inner_offset / float(inner_g)))
+            # 雙段式光暈曲線：前段飽滿明亮、尾段平滑羽化至 0
+            alpha = int(215 * (remain ** 1.45))
+            boost = int(35 * (remain ** 3.0))
+            r = min(255, nr + boost)
+            g = min(255, ng + boost)
+            b = min(255, nb + boost)
         pr = (r * alpha) // 255
         pg = (g * alpha) // 255
         pb = (b * alpha) // 255
         return struct.pack("<BBBB", pb, pg, pr, alpha)
 
-    def _ensure_dib(self, width: int, height: int, rgb: tuple[int, int, int]) -> None:
-        cache_key = (width, height, rgb)
+    def _ensure_dib(self, width: int, height: int, rgb: tuple[int, int, int], dpi: int) -> None:
+        cache_key = (width, height, rgb, dpi)
         if self._last_cache_key == cache_key and self._dib_hdc and self._dib_bits:
             return
         self._free_dib()
+
+        outer_g, core_t, inner_g, corner_r, total_pad = self._scaled_metrics(dpi)
 
         screen_dc = user32.GetDC(None)
         self._dib_hdc = gdi32.CreateCompatibleDC(screen_dc)
@@ -790,15 +879,18 @@ class WindowGlowOverlay:
 
         stride = width * 4
         raw = bytearray(stride * height)
-        px_lut = [self._premul_pixel_bytes(float(d), rgb) for d in range(TOTAL_PAD)]
+        px_lut = [
+            self._premul_pixel_bytes(float(d), rgb, outer_g, core_t, inner_g)
+            for d in range(total_pad)
+        ]
 
-        corner_box = TOTAL_PAD + CORNER_RADIUS
+        corner_box = total_pad + corner_r
         straight_x0 = corner_box
         straight_x1 = max(straight_x0, width - corner_box)
         straight_len = straight_x1 - straight_x0
 
         if straight_len > 0:
-            for d in range(TOTAL_PAD):
+            for d in range(min(total_pad, height // 2)):
                 p4 = px_lut[d]
                 seg = p4 * straight_len
                 top_start = d * stride + straight_x0 * 4
@@ -810,7 +902,7 @@ class WindowGlowOverlay:
         mid_y1 = max(mid_y0, height - corner_box)
         if mid_y1 > mid_y0:
             mid_row = bytearray(stride)
-            for d in range(TOTAL_PAD):
+            for d in range(min(total_pad, width // 2)):
                 p4 = px_lut[d]
                 mid_row[d * 4 : (d + 1) * 4] = p4
                 rx = width - 1 - d
@@ -820,16 +912,17 @@ class WindowGlowOverlay:
                 off = y * stride
                 raw[off : off + stride] = mid_row_bytes
 
-        inner_r = float(CORNER_RADIUS)
+        # 圓角幾何：以視窗外框圓角半徑 corner_r 為基準，向內延伸 core_t + inner_g、向外延伸 outer_g
+        arc_center = float(outer_g + corner_r)
         for cy in range(min(corner_box, height // 2)):
             for cx in range(min(corner_box, width // 2)):
-                dx = float(corner_box - 1 - cx)
-                dy = float(corner_box - 1 - cy)
-                dist_from_center = math.hypot(dx, dy)
-                offset_from_inner = dist_from_center - inner_r
-                d_from_outer = float(TOTAL_PAD - 1) - offset_from_inner
-                if 0.0 <= d_from_outer < float(TOTAL_PAD):
-                    p4 = self._premul_pixel_bytes(d_from_outer, rgb)
+                dx = max(0.0, arc_center - 0.5 - float(cx))
+                dy = max(0.0, arc_center - 0.5 - float(cy))
+                dist_from_arc_center = math.hypot(dx, dy)
+                # dist_from_arc_center == corner_r 時正好落在視窗邊緣 (d_from_outer == outer_g)
+                d_from_outer = float(outer_g) + (float(corner_r) - dist_from_arc_center)
+                if 0.0 <= d_from_outer < float(total_pad):
+                    p4 = self._premul_pixel_bytes(d_from_outer, rgb, outer_g, core_t, inner_g)
                     tl_off = cy * stride + cx * 4
                     raw[tl_off : tl_off + 4] = p4
                     tr_off = cy * stride + (width - 1 - cx) * 4
@@ -853,40 +946,44 @@ class WindowGlowOverlay:
             gdi32.DeleteDC(self._dib_hdc)
             self._dib_hdc = None
         self._dib_bits = ctypes.c_void_p()
-        self._last_cache_key = (0, 0, (0, 0, 0))
+        self._last_cache_key = (0, 0, (0, 0, 0), 96)
 
     def _tick(self) -> None:
         with self._lock:
             target = self._target_hwnd
             last_ts = self._last_active_ts
+            trig_ts = self._trigger_ts
+            seen_fg = self._seen_in_foreground
             rgb = self._color_rgb
             exp_tab_title = self._expected_tab_title
             hold_sec = self._hold_sec
+            guard_hwnd = self._guard_browser_hwnd
+            guard_title = self._guard_browser_tab_title
+
+        # 全時段 60FPS 跨分頁游標防漏守衛：即使外框已淡出，只要 Chrome 切到別的分頁（如「新分頁」），瞬間強制隱藏殘留虛擬游標！
+        if guard_hwnd and guard_title and user32.IsWindow(wintypes.HWND(guard_hwnd)):
+            if not self._is_expected_tab_active(guard_hwnd, guard_title):
+                self._hide_cursor_overlays_for_unselected_tab()
 
         if not target or not self._glow_hwnd:
             return
 
         now = time.monotonic()
-        elapsed = now - last_ts
 
-        # 超過停留時間或視窗不存在／已最小化 -> 結束高亮
         if (
             not user32.IsWindow(wintypes.HWND(target))
             or not user32.IsWindowVisible(wintypes.HWND(target))
             or user32.IsIconic(wintypes.HWND(target))
-            or elapsed > (hold_sec + FADE_OUT_SEC)
         ):
             user32.ShowWindow(wintypes.HWND(self._glow_hwnd), 0)
             with self._lock:
                 if self._dwm_colored_hwnd:
                     self._restore_dwm_border(self._dwm_colored_hwnd)
                     self._dwm_colored_hwnd = 0
-                if elapsed > (hold_sec + FADE_OUT_SEC):
-                    self._target_hwnd = 0
-                    self._expected_tab_title = ""
+            self._hide_cursor_overlays_for_unselected_tab()
             return
 
-        # Tab-Aware 分頁感知檢查：如果目標是 Chrome 分頁，但使用者已切去別的分頁 -> 瞬間隱藏外框與殘留游標！
+        # Tab-Aware 嚴格分頁隔離：只要目前視窗標題不等於目標分頁（例如使用者按 Ctrl+T 開新分頁或切分頁），16ms 內立即隱藏外框與游標！
         if exp_tab_title and not self._is_expected_tab_active(target, exp_tab_title):
             if user32.IsWindowVisible(wintypes.HWND(self._glow_hwnd)):
                 user32.ShowWindow(wintypes.HWND(self._glow_hwnd), 0)
@@ -897,10 +994,40 @@ class WindowGlowOverlay:
             self._hide_cursor_overlays_for_unselected_tab()
             return
 
+        # 前景揭曉計時：若 AI 在背景操作時 Chrome 被 Antigravity 蓋住，等使用者切回 Chrome 該分頁時才開始算完整顯示秒數！
+        fg_now = int(user32.GetForegroundWindow() or 0)
+        if not seen_fg and fg_now == target and (now - trig_ts) <= PENDING_REVEAL_MAX_SEC:
+            with self._lock:
+                self._seen_in_foreground = True
+                self._last_active_ts = now
+                last_ts = now
+                seen_fg = True
+
+        elapsed = now - last_ts
+        max_wait = hold_sec + FADE_OUT_SEC if seen_fg else PENDING_REVEAL_MAX_SEC
+        if elapsed > max_wait:
+            user32.ShowWindow(wintypes.HWND(self._glow_hwnd), 0)
+            with self._lock:
+                if self._dwm_colored_hwnd:
+                    self._restore_dwm_border(self._dwm_colored_hwnd)
+                    self._dwm_colored_hwnd = 0
+                self._target_hwnd = 0
+                self._expected_tab_title = ""
+            return
+
         bounds = self._get_target_bounds(target)
         if not bounds:
             user32.ShowWindow(wintypes.HWND(self._glow_hwnd), 0)
             return
+
+        dpi = 96
+        try:
+            d_val = user32.GetDpiForWindow(wintypes.HWND(target))
+            if d_val and d_val > 0:
+                dpi = int(d_val)
+        except Exception:
+            pass
+        outer_g, _, _, _, _ = self._scaled_metrics(dpi)
 
         # 同步套用 Win11 DWM 同色邊框
         colorref = rgb[0] | (rgb[1] << 8) | (rgb[2] << 16)
@@ -910,18 +1037,19 @@ class WindowGlowOverlay:
                 self._dwm_colored_hwnd = target
 
         tx, ty, tw, th = bounds
-        ox = tx - GLOW_SPREAD
-        oy = ty - GLOW_SPREAD
-        ow = tw + 2 * GLOW_SPREAD
-        oh = th + 2 * GLOW_SPREAD
+        ox = tx - outer_g
+        oy = ty - outer_g
+        ow = tw + 2 * outer_g
+        oh = th + 2 * outer_g
 
-        self._ensure_dib(ow, oh, rgb)
+        self._ensure_dib(ow, oh, rgb, dpi)
 
-        if elapsed <= hold_sec:
-            pulse = 0.85 + 0.15 * math.sin(now * 6.0)
+        effective_elapsed = elapsed if seen_fg else 0.0
+        if effective_elapsed <= hold_sec:
+            pulse = 0.88 + 0.12 * math.sin(now * 5.5)
             master_alpha = int(255 * pulse)
         else:
-            fade_progress = (elapsed - hold_sec) / FADE_OUT_SEC
+            fade_progress = (effective_elapsed - hold_sec) / FADE_OUT_SEC
             master_alpha = max(0, min(255, int(255 * (1.0 - fade_progress))))
 
         pt_dst = POINT(ox, oy)
@@ -989,11 +1117,12 @@ class WindowGlowOverlay:
         self._glow_hwnd = int(hwnd) if hwnd else 0
 
         if self._glow_hwnd:
-            try:
-                user32.SetWindowDisplayAffinity(wintypes.HWND(self._glow_hwnd), WDA_EXCLUDEFROMCAPTURE)
-            except Exception:
-                pass
-            user32.SetTimer(wintypes.HWND(self._glow_hwnd), 1, 33, None)
+            if EXCLUDE_OVERLAY_FROM_CAPTURE:
+                try:
+                    user32.SetWindowDisplayAffinity(wintypes.HWND(self._glow_hwnd), WDA_EXCLUDEFROMCAPTURE)
+                except Exception:
+                    pass
+            user32.SetTimer(wintypes.HWND(self._glow_hwnd), 1, 16, None)
 
         msg = wintypes.MSG()
         while self._running and user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
@@ -1007,18 +1136,55 @@ class WindowGlowOverlay:
 # MCP JSON-RPC 代理 + @ 規則同步器 + Chrome Tabs Picker MCP App 伺服器
 # ---------------------------------------------------------------------------
 class CuaMcpGlowProxy:
+    SESSION_AWARE_TOOLS = {
+        "list_windows",
+        "get_window_state",
+        "verify_state",
+        "launch_app",
+        "kill_app",
+        "bring_to_front",
+        "set_window_frame",
+        "invoke_menu",
+        "debug_window_info",
+        "click",
+        "double_click",
+        "right_click",
+        "drag",
+        "type_text",
+        "press_key",
+        "hotkey",
+        "set_value",
+        "scroll",
+        "run_steps",
+        "get_browser_state",
+        "browser_prepare",
+        "browser_navigate",
+        "browser_motion_policy",
+        "browser_click",
+        "browser_type",
+        "browser_select",
+        "browser_dialog",
+        "browser_set_input_files",
+        "browser_download",
+        "browser_pointer",
+    }
+
     def __init__(self, cua_binary: str, cua_args: list[str]) -> None:
         self.cua_binary = cua_binary
         self.cua_args = cua_args
         self.overlay = WindowGlowOverlay()
+        self.cursor_overlay = ProxyVirtualCursorOverlay(titles_match_browser_tab)
+        self._cdp_rescue = CdpHeuristicRescueManager(titles_match_browser_tab)
 
         self.snapshot_to_hwnd: dict[str, int] = {}
         self.pid_to_hwnd: dict[int, int] = {}
         self.browser_target_to_hwnd: dict[str, int] = {}
         self.browser_target_to_pid: dict[str, int] = {}
         self.tab_id_to_info: dict[str, dict] = {}
+        self.last_ref_descriptors: dict[str, dict] = {}
         self.req_id_to_meta: dict[object, dict] = {}
         self.active_session: str = "agy-cursor"
+        self._configured_cursor_sessions: set[str] = set()
 
         self._state_lock = threading.Lock()
         self._stdin_lock = threading.Lock()
@@ -1063,6 +1229,14 @@ class CuaMcpGlowProxy:
         self._tab_id_to_stable_id: dict[str, str] = {}
         self._stable_id_to_latest: dict[str, dict] = {}
         self._target_id_to_latest_for_hwnd: dict[int, str] = {}
+        self._live_tab_ids: set[str] = set()
+        self._live_target_ids: set[str] = set()
+        self._bindings_cache_path = os.path.join(
+            local_app_data, "antigravity-computer-use", "tab_bindings_cache.json"
+        )
+        self._historical_tab_meta: dict[str, dict] = {}
+        self._historical_target_hwnd: dict[str, int] = {}
+        self._load_bindings_cache()
 
     # -- Safe stdio helpers -------------------------------------------------
     def _send_to_client(self, obj: dict) -> None:
@@ -1397,7 +1571,123 @@ class CuaMcpGlowProxy:
 
             if latest_tid:
                 self._target_id_to_latest_for_hwnd[wid] = latest_tid
+                self._live_target_ids.add(latest_tid)
+                self._historical_target_hwnd[latest_tid] = wid
+            for t in win_tabs:
+                tid_str = str(t.get("tab_id") or "")
+                if tid_str:
+                    self._live_tab_ids.add(tid_str)
+                    self._historical_tab_meta[tid_str] = {
+                        "url": t.get("url") or "",
+                        "title": t.get("title") or "",
+                        "window_id": wid,
+                        "pid": t.get("pid") or 0,
+                    }
+            if len(self._historical_tab_meta) > 512:
+                while len(self._historical_tab_meta) > 512:
+                    self._historical_tab_meta.pop(next(iter(self._historical_tab_meta)), None)
+            if len(self._historical_target_hwnd) > 256:
+                while len(self._historical_target_hwnd) > 256:
+                    self._historical_target_hwnd.pop(next(iter(self._historical_target_hwnd)), None)
             self._window_stable_tabs[wid] = [dict(t) for t in win_tabs]
+        self._save_bindings_cache()
+
+    def _load_bindings_cache(self) -> None:
+        try:
+            if os.path.isfile(self._bindings_cache_path):
+                with open(self._bindings_cache_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    tabs_map = data.get("tabs")
+                    if isinstance(tabs_map, dict):
+                        for k, v in tabs_map.items():
+                            if isinstance(k, str) and isinstance(v, dict):
+                                self._historical_tab_meta[k] = v
+                    targs_map = data.get("targets")
+                    if isinstance(targs_map, dict):
+                        for k, v in targs_map.items():
+                            if isinstance(k, str) and isinstance(v, int):
+                                self._historical_target_hwnd[k] = v
+        except Exception:
+            pass
+
+    def _save_bindings_cache(self) -> None:
+        try:
+            with self._stable_lock:
+                payload = {
+                    "tabs": dict(self._historical_tab_meta),
+                    "targets": dict(self._historical_target_hwnd),
+                }
+            os.makedirs(os.path.dirname(self._bindings_cache_path), exist_ok=True)
+            tmp_path = self._bindings_cache_path + ".tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False)
+            os.replace(tmp_path, self._bindings_cache_path)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _is_offscreen_helper_window(hwnd: int) -> bool:
+        """僅過濾不可見或離螢幕的 0 畫面背景輔助視窗（如 Chrome 遠端桌面 [off-screen]），保留所有可見瀏覽器與遠端桌面 PWA 視窗。"""
+        if hwnd <= 0:
+            return True
+        try:
+            if not user32.IsWindow(wintypes.HWND(hwnd)):
+                return True
+            if user32.IsIconic(wintypes.HWND(hwnd)):
+                # 最小化的視窗是真實使用者視窗，不可誤判為幽靈視窗
+                return False
+            if not user32.IsWindowVisible(wintypes.HWND(hwnd)):
+                return True
+            bounds = WindowGlowOverlay._get_target_bounds(hwnd)
+            if bounds is None:
+                return True
+            bx, by, bw, bh = bounds
+            if bx < -16000 or by < -16000 or bw < 80 or bh < 80:
+                return True
+        except Exception:
+            return False
+        return False
+
+    def _match_historical_tab_to_live(self, old_tab_id: str) -> dict | None:
+        """跨重啟自癒：將舊版 tab_id 的歷史 (window_id, url, title) 匹配至最新開啟中的分頁。"""
+        with self._stable_lock:
+            hist = self._historical_tab_meta.get(old_tab_id)
+            live_tabs = list(self._stable_id_to_latest.values())
+        if not hist or not live_tabs:
+            return None
+        h_url = (hist.get("url") or "").strip()
+        h_title = (hist.get("title") or "").strip()
+        h_wid = int(hist.get("window_id") or 0)
+
+        # 1. 同視窗 + 同 URL
+        if h_wid > 0 and h_url:
+            for t in live_tabs:
+                if int(t.get("window_id") or 0) == h_wid and (t.get("url") or "").strip() == h_url:
+                    return t
+        # 2. URL + 標題完全相符
+        if h_url and h_title:
+            for t in live_tabs:
+                if (t.get("url") or "").strip() == h_url and (t.get("title") or "").strip() == h_title:
+                    return t
+        # 3. URL 相符（忽略 hash 差異）
+        if h_url:
+            base_h = h_url.split("#", 1)[0]
+            for t in live_tabs:
+                if ((t.get("url") or "").strip()).split("#", 1)[0] == base_h:
+                    return t
+        # 4. 正規化標題相符
+        if h_title:
+            best_t = None
+            best_sc = 0
+            for t in live_tabs:
+                sc = titles_match_browser_tab(t.get("title") or "", h_title)
+                if sc > best_sc:
+                    best_sc = sc
+                    best_t = t
+            if best_t and best_sc >= 80:
+                return best_t
+        return None
 
     def _prune_closed_windows_stable_tabs(self, open_wids: set[int]) -> None:
         with self._stable_lock:
@@ -1573,10 +1863,15 @@ class CuaMcpGlowProxy:
                 if isinstance(cand, list):
                     for w in cand:
                         if isinstance(w, dict) and w.get("pid") and (w.get("window_id") or w.get("id")):
+                            if w.get("off_screen") is True or w.get("is_offscreen") is True:
+                                continue
+                            wid_int = int(w.get("window_id") or w.get("id"))
+                            if self._is_offscreen_helper_window(wid_int):
+                                continue
                             windows.append(
                                 {
                                     "pid": int(w["pid"]),
-                                    "window_id": int(w.get("window_id") or w.get("id")),
+                                    "window_id": wid_int,
                                 }
                             )
 
@@ -1586,9 +1881,14 @@ class CuaMcpGlowProxy:
                     c.get("text", "") for c in (c_list or []) if isinstance(c, dict)
                 )
                 for line in txt.splitlines():
+                    if "[off-screen]" in line.lower():
+                        continue
                     m = re.search(r"\(pid\s+(\d+)\).*?\[window_id:\s*(\d+)\]", line)
                     if m:
-                        windows.append({"pid": int(m.group(1)), "window_id": int(m.group(2))})
+                        wid_int = int(m.group(2))
+                        if self._is_offscreen_helper_window(wid_int):
+                            continue
+                        windows.append({"pid": int(m.group(1)), "window_id": wid_int})
 
             if not windows:
                 with self._state_lock:
@@ -1710,12 +2010,44 @@ class CuaMcpGlowProxy:
                 self._last_full_sync_mono = time.monotonic()
             return result_payload
 
+    def _ensure_session_cursor_configured(self, session_name: str) -> None:
+        if session_name in self._configured_cursor_sessions:
+            return
+        self._configured_cursor_sessions.add(session_name)
+        try:
+            self._internal_call_tool(
+                "set_agent_cursor_enabled",
+                {"session": session_name, "enabled": True},
+                timeout=4.0,
+            )
+            self._internal_call_tool(
+                "set_agent_cursor_motion",
+                {
+                    "session": session_name,
+                    "style": "comet_swoop",
+                    "timing": "steady",
+                    "dwell_after_click_ms": 220,
+                    "idle_hide_ms": 1500,
+                    "effects": {
+                        "glow": "on",
+                        "ripple": "on",
+                        "squish": "on",
+                        "trail": "on",
+                    },
+                },
+                timeout=4.0,
+            )
+        except Exception:
+            pass
+
     def _background_tab_sync_loop(self) -> None:
-        """背景輕量同步執行緒：啟動後自動同步一次，之後僅在閒置且未干擾 Agent 操作時同步。"""
+        """背景輕量同步執行緒：啟動後自動啟用虛擬游標特效並同步分頁，之後僅在閒置時同步。"""
         time.sleep(2.0)
         while self._running:
+            if self._initialized:
+                self._ensure_session_cursor_configured(self.active_session)
             now_mono = time.monotonic()
-            agent_idle = (now_mono - self._last_agent_browser_call_mono) >= 20.0
+            agent_idle = (now_mono - self._last_agent_browser_call_mono) >= 90.0
             sync_stale = (now_mono - self._last_full_sync_mono) >= 14.0
             if self._initialized and self._client_inflight == 0 and agent_idle and sync_stale:
                 try:
@@ -1984,7 +2316,7 @@ class CuaMcpGlowProxy:
 
                 now_mono = time.monotonic()
                 age = now_mono - last_mono
-                agent_idle = (now_mono - self._last_agent_browser_call_mono) >= 20.0
+                agent_idle = (now_mono - self._last_agent_browser_call_mono) >= 90.0
                 if (needs_resync or age >= 15.0) and self._client_inflight == 0 and agent_idle:
                     self._trigger_async_full_sync()
 
@@ -2122,11 +2454,20 @@ class CuaMcpGlowProxy:
         if not isinstance(args, dict):
             return (0, "")
 
-        # 1. 指定了瀏覽器 tab_id -> 啟用 Tab-Aware 分頁感知！
+        # 1. 指定了瀏覽器 tab_id -> 啟用 Tab-Aware 分頁感知（同時查找記憶體、stable_id 與歷史快取，絕不漏掉標題）！
         tab_id = args.get("tab_id")
-        if isinstance(tab_id, str) and tab_id in self.tab_id_to_info:
-            info = self.tab_id_to_info[tab_id]
-            return (int(info.get("window_id") or 0), str(info.get("title") or ""))
+        if isinstance(tab_id, str) and tab_id:
+            if tab_id in self.tab_id_to_info:
+                info = self.tab_id_to_info[tab_id]
+                return (int(info.get("window_id") or 0), str(info.get("title") or ""))
+            with self._stable_lock:
+                sid = self._tab_id_to_stable_id.get(tab_id)
+                if sid and sid in self._stable_id_to_latest:
+                    linfo = self._stable_id_to_latest[sid]
+                    return (int(linfo.get("window_id") or 0), str(linfo.get("title") or ""))
+                hinfo = self._historical_tab_meta.get(tab_id)
+                if hinfo:
+                    return (int(hinfo.get("window_id") or 0), str(hinfo.get("title") or ""))
 
         # 2. 指定了瀏覽器 target_id
         btid = args.get("target_id")
@@ -2276,12 +2617,33 @@ class CuaMcpGlowProxy:
                 return
 
             is_browser_tool = tool_name == "get_browser_state" or tool_name.startswith("browser_")
-            args_remapped = False
+            args_modified = False
+            if isinstance(args, dict) and tool_name in self.SESSION_AWARE_TOOLS:
+                if not args.get("session"):
+                    args["session"] = self.active_session
+                    args_modified = True
+
             if is_browser_tool and isinstance(args, dict):
                 self._last_agent_browser_call_mono = time.monotonic()
-                args_remapped = self._remap_stale_browser_ids_in_args(args)
+                if self._remap_stale_browser_ids_in_args(args):
+                    args_modified = True
+
+                # 若傳入跨重啟或尚未活躍的舊版 tab_id / target_id，交由背景自癒執行緒先自動同步再呼叫
+                req_tid = args.get("tab_id")
+                req_btid = args.get("target_id")
+                with self._stable_lock:
+                    tid_unlive = isinstance(req_tid, str) and bool(req_tid) and req_tid not in self._live_tab_ids
+                    btid_unlive = isinstance(req_btid, str) and bool(req_btid) and req_btid not in self._live_target_ids
+                if req_id is not None and (tid_unlive or btid_unlive):
+                    threading.Thread(
+                        target=self._execute_browser_call_with_self_heal,
+                        args=(req_id, tool_name, copy.deepcopy(args)),
+                        daemon=True,
+                    ).start()
+                    return
 
             session_name = args.get("session") if isinstance(args, dict) else None
+            is_nav_call = tool_name in ("browser_navigate", "browser_click")
             with self._state_lock:
                 self._client_inflight += 1
                 if isinstance(session_name, str) and session_name:
@@ -2297,13 +2659,20 @@ class CuaMcpGlowProxy:
                         "tab_id": args.get("tab_id") if isinstance(args, dict) else None,
                         "pid": args.get("pid") if isinstance(args, dict) else None,
                         "session": sess,
+                        "orig_args": copy.deepcopy(args) if (is_browser_tool and isinstance(args, dict)) else None,
                     }
 
             # 只有對特定分頁或原生視窗操作才點亮外框（bind-only get_browser_state 不先強亮整個 Chrome，待看 tab）
             if hwnd > 0 and not (tool_name == "get_browser_state" and not args.get("tab_id")):
-                self.overlay.highlight_window(hwnd, sess, expected_tab_title=tab_title)
+                self.overlay.highlight_window(
+                    hwnd,
+                    sess,
+                    expected_tab_title=tab_title,
+                    is_navigation=is_nav_call,
+                    is_browser=is_browser_tool,
+                )
 
-            if args_remapped:
+            if args_modified:
                 self._send_to_upstream((json.dumps(msg, ensure_ascii=False) + "\n").encode("utf-8"))
                 return
 
@@ -2312,6 +2681,223 @@ class CuaMcpGlowProxy:
                 self.req_id_to_meta[req_id] = {"method": method}
 
         self._send_to_upstream(line)
+
+    def _lookup_tab_info_for_rescue(self, args: dict) -> dict | None:
+        tab_id = str(args.get("tab_id") or "")
+        with self._state_lock:
+            if tab_id and tab_id in self.tab_id_to_info:
+                return dict(self.tab_id_to_info[tab_id])
+        if tab_id:
+            with self._stable_lock:
+                sid = self._tab_id_to_stable_id.get(tab_id)
+                if sid and sid in self._stable_id_to_latest:
+                    return dict(self._stable_id_to_latest[sid])
+            matched = self._match_historical_tab_to_live(tab_id)
+            if matched:
+                return dict(matched)
+            with self._stable_lock:
+                hist = self._historical_tab_meta.get(tab_id)
+                if hist:
+                    return dict(hist)
+        return None
+
+    def _try_cdp_heuristic_rescue(
+        self, tool_name: str, args: dict, sess: str
+    ) -> dict | None:
+        if tool_name not in (
+            "get_browser_state",
+            "browser_click",
+            "browser_pointer",
+            "browser_type",
+            "browser_navigate",
+        ):
+            return None
+        tab_info = self._lookup_tab_info_for_rescue(args)
+        if not tab_info:
+            self._sync_all_chrome_tabs()
+            tab_info = self._lookup_tab_info_for_rescue(args)
+        if not tab_info:
+            return None
+        try:
+            mcp_res, (cvx, cvy), updated_meta = self._cdp_rescue.rescue_tool(
+                tool_name, args, tab_info
+            )
+            hwnd = int(tab_info.get("window_id") or 0)
+            new_title = updated_meta.get("title") or tab_info.get("title") or ""
+            new_url = updated_meta.get("url") or tab_info.get("url") or ""
+            tab_id = str(args.get("tab_id") or tab_info.get("tab_id") or "")
+            if tab_id:
+                with self._state_lock:
+                    if tab_id in self.tab_id_to_info:
+                        if new_title:
+                            self.tab_id_to_info[tab_id]["title"] = new_title
+                        if new_url:
+                            self.tab_id_to_info[tab_id]["url"] = new_url
+            if hwnd <= 0:
+                live_wins = self._enumerate_live_chrome_windows()
+                if live_wins:
+                    hwnd = int(live_wins[0]["window_id"])
+            if hwnd > 0:
+                is_nav = tool_name in ("browser_navigate", "browser_click")
+                self.overlay.highlight_window(
+                    hwnd,
+                    sess,
+                    expected_tab_title=new_title,
+                    is_navigation=is_nav,
+                    is_browser=True,
+                )
+                if tool_name in ("browser_click", "browser_pointer", "browser_type"):
+                    rgb = resolve_cua_cursor_color(sess)
+                    self.cursor_overlay.pulse_at_viewport(
+                        hwnd, rgb, cvx, cvy, expected_tab_title=new_title
+                    )
+            return mcp_res
+        except Exception:
+            return None
+
+    def _execute_browser_call_with_self_heal(
+        self, req_id: object, tool_name: str, args: dict
+    ) -> None:
+        """背景自癒執行緒：遇到跨重啟或過期 tab_id 時，先自動同步重綁再發送，若遇 heuristic 再無縫轉 CDP 救援。"""
+        sess = str(args.get("session") or self.active_session or "agy-cursor")
+        old_tab_id = str(args.get("tab_id") or "")
+        old_target_id = str(args.get("target_id") or "")
+
+        self._sync_all_chrome_tabs()
+        if not self._remap_stale_browser_ids_in_args(args):
+            if old_tab_id:
+                matched = self._match_historical_tab_to_live(old_tab_id)
+                if matched:
+                    if matched.get("tab_id"):
+                        args["tab_id"] = matched["tab_id"]
+                    if matched.get("target_id"):
+                        args["target_id"] = matched["target_id"]
+            elif old_target_id:
+                with self._stable_lock:
+                    h_wid = self._historical_target_hwnd.get(old_target_id, 0)
+                    if h_wid > 0:
+                        live_tid = self._target_id_to_latest_for_hwnd.get(h_wid, "")
+                        if live_tid:
+                            args["target_id"] = live_tid
+
+        with self._state_lock:
+            hwnd, tab_title = self._resolve_target_from_args(args)
+        if hwnd > 0 and not (tool_name == "get_browser_state" and not args.get("tab_id")):
+            self.overlay.highlight_window(
+                hwnd,
+                sess,
+                expected_tab_title=tab_title,
+                is_navigation=(tool_name in ("browser_navigate", "browser_click")),
+                is_browser=True,
+            )
+
+        resp = self._internal_call_tool(tool_name, args, timeout=18.0)
+        if not resp:
+            rescued = self._try_cdp_heuristic_rescue(tool_name, args, sess)
+            if rescued:
+                self._send_to_client({"jsonrpc": "2.0", "id": req_id, "result": rescued})
+                return
+            self._send_to_client(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32603, "message": f"{tool_name} timed out in upstream cua-driver"},
+                }
+            )
+            return
+
+        raw_str = json.dumps(resp, ensure_ascii=False)
+        if "heuristic (title-only)" in raw_str or "browser_binding_ambiguous" in raw_str:
+            rescued = self._try_cdp_heuristic_rescue(tool_name, args, sess)
+            if rescued:
+                self._send_to_client({"jsonrpc": "2.0", "id": req_id, "result": rescued})
+                return
+
+        resp["id"] = req_id
+        res_body = resp.get("result")
+        if isinstance(res_body, dict):
+            sc = res_body.get("structuredContent")
+            if isinstance(sc, dict) and tool_name in (
+                "get_browser_state",
+                "browser_navigate",
+                "browser_click",
+                "browser_type",
+                "browser_pointer",
+            ):
+                extra = self._format_browser_structured_summary(tool_name, sc)
+                c_list = res_body.get("content")
+                if extra and isinstance(c_list, list) and c_list and isinstance(c_list[0], dict):
+                    if "[Tabs]" not in c_list[0].get("text", "") and "[Action Refs]" not in c_list[0].get("text", ""):
+                        c_list[0]["text"] = c_list[0].get("text", "") + extra
+        self._send_to_client(resp)
+
+    def _rescue_failed_upstream_call(
+        self, req_id: object, meta: dict, fallback_msg: dict, raw_err: str
+    ) -> None:
+        tool_name = meta.get("tool_name") or ""
+        sess = meta.get("session") or self.active_session
+        orig_args = meta.get("orig_args")
+        if not isinstance(orig_args, dict):
+            self._send_to_client(fallback_msg)
+            return
+
+        if "browser_ref_stale" in raw_err and isinstance(orig_args.get("ref"), str):
+            stale_ref = orig_args["ref"]
+            with self._state_lock:
+                rdesc = self.last_ref_descriptors.get(stale_ref)
+            if rdesc and (rdesc.get("name") or rdesc.get("role")):
+                self._remap_stale_browser_ids_in_args(orig_args)
+                q_args: dict = {
+                    "target_id": orig_args.get("target_id"),
+                    "tab_id": orig_args.get("tab_id"),
+                    "snapshot_format": "semantic_v2",
+                    "session": sess,
+                }
+                if rdesc.get("name"):
+                    q_args["query"] = str(rdesc["name"])[:60]
+                snap_resp = self._internal_call_tool("get_browser_state", q_args, timeout=8.0)
+                snap_sc = (((snap_resp or {}).get("result") or {}).get("structuredContent")) or {}
+                fresh_refs = snap_sc.get("refs") if isinstance(snap_sc, dict) else None
+                new_ref = ""
+                if isinstance(fresh_refs, list):
+                    for fr in fresh_refs:
+                        if not isinstance(fr, dict):
+                            continue
+                        frid = fr.get("ref") or fr.get("id") or ""
+                        frole = fr.get("role") or ""
+                        fname = fr.get("name") or fr.get("label") or fr.get("text") or ""
+                        if frid and frole == rdesc.get("role") and fname == rdesc.get("name"):
+                            new_ref = str(frid)
+                            break
+                    if not new_ref:
+                        for fr in fresh_refs:
+                            if isinstance(fr, dict) and (fr.get("ref") or fr.get("id")):
+                                if fr.get("role") == rdesc.get("role") or (
+                                    rdesc.get("name") and fr.get("name") == rdesc.get("name")
+                                ):
+                                    new_ref = str(fr.get("ref") or fr.get("id"))
+                                    break
+                if new_ref:
+                    retry_args = dict(orig_args)
+                    retry_args["ref"] = new_ref
+                    retry_resp = self._internal_call_tool(tool_name, retry_args, timeout=12.0)
+                    if retry_resp:
+                        retry_resp["id"] = req_id
+                        self._send_to_client(retry_resp)
+                        return
+            self._send_to_client(fallback_msg)
+            return
+
+        if "heuristic (title-only)" in raw_err or "browser_binding_ambiguous" in raw_err:
+            rescued = self._try_cdp_heuristic_rescue(tool_name, orig_args, sess)
+            if rescued:
+                self._send_to_client({"jsonrpc": "2.0", "id": req_id, "result": rescued})
+                return
+            self._send_to_client(fallback_msg)
+            return
+
+        # Stale / unattached binding -> 觸發一次同步重綁後重試
+        self._execute_browser_call_with_self_heal(req_id, tool_name, orig_args)
 
     def _handle_server_line(self, line: bytes) -> None:
         try:
@@ -2361,8 +2947,32 @@ class CuaMcpGlowProxy:
                         tools.append(vt)
                         modified = True
 
+        # 2.5 攔截上游瀏覽器 heuristic 唯讀拒絕或過期綁定錯誤，無縫轉入背景自癒／CDP 救援
+        elif method == "tools/call" and isinstance(meta.get("orig_args"), dict):
+            raw_check = json.dumps(msg, ensure_ascii=False)
+            is_err = bool(msg.get("error")) or bool((msg.get("result") or {}).get("isError")) or ("refused (" in raw_check)
+            if is_err and any(
+                kw in raw_check
+                for kw in (
+                    "heuristic (title-only)",
+                    "browser_binding_ambiguous",
+                    "browser_ref_stale",
+                    "not a live binding",
+                    "browser_binding_stale",
+                    "browser_requires_setup",
+                    "browser_consent_required",
+                )
+            ):
+                if req_id is not None:
+                    threading.Thread(
+                        target=self._rescue_failed_upstream_call,
+                        args=(req_id, meta, msg, raw_check),
+                        daemon=True,
+                    ).start()
+                    return
+
         # 3. tools/call 回應：追蹤 window_id / snapshot_id / tabs 並橋接 structuredContent
-        elif method == "tools/call" and isinstance(msg.get("result"), dict):
+        if method == "tools/call" and isinstance(msg.get("result"), dict):
             tool_name = meta.get("tool_name") or ""
             sess = meta.get("session") or self.active_session
             req_hwnd = int(meta.get("hwnd") or 0)
@@ -2429,12 +3039,28 @@ class CuaMcpGlowProxy:
                         with self._stable_lock:
                             updated_tabs_for_rules = list(self._stable_id_to_latest.values())
 
+                    # 記錄最新 snapshot refs 描述，供 browser_ref_stale 發生時 0.2s 自動重對位
+                    sc_refs = sc.get("refs")
+                    if isinstance(sc_refs, list) and sc_refs:
+                        if len(self.last_ref_descriptors) > 2048:
+                            self.last_ref_descriptors.clear()
+                        for r in sc_refs:
+                            if isinstance(r, dict):
+                                rid = r.get("ref") or r.get("id")
+                                if isinstance(rid, str) and rid:
+                                    self.last_ref_descriptors[rid] = {
+                                        "role": r.get("role") or "",
+                                        "name": r.get("name") or r.get("label") or r.get("text") or "",
+                                    }
+
                     # 單一分頁 snapshot 或 browser_navigate 後更新該 tab_id 的最新標題
                     sc_tab_id = sc.get("tab_id") or req_tab_id
                     sc_title = sc.get("title")
                     sc_url = sc.get("url")
                     if isinstance(sc_tab_id, str) and sc_tab_id and isinstance(sc_title, str) and sc_title:
                         detected_tab_title = sc_title
+                        if detected_hwnd > 0:
+                            self.overlay.update_expected_tab_title(detected_hwnd, sc_title)
                         if sc_tab_id in self.tab_id_to_info:
                             self.tab_id_to_info[sc_tab_id]["title"] = sc_title
                             if isinstance(sc_url, str) and sc_url:
@@ -2465,11 +3091,14 @@ class CuaMcpGlowProxy:
                 ).start()
 
             # 點亮目標視窗（瀏覽器分頁操作會帶入 expected_tab_title 啟用分頁感知）
+            is_b_tool = tool_name == "get_browser_state" or tool_name.startswith("browser_")
             if detected_hwnd > 0 and not (tool_name == "get_browser_state" and not req_tab_id):
                 self.overlay.highlight_window(
                     detected_hwnd,
                     sess,
                     expected_tab_title=detected_tab_title,
+                    is_navigation=(tool_name in ("browser_navigate", "browser_click")),
+                    is_browser=is_b_tool,
                 )
 
         if modified:
@@ -2518,6 +3147,7 @@ class CuaMcpGlowProxy:
         finally:
             self._running = False
             self.overlay.shutdown()
+            self.cursor_overlay.shutdown()
             try:
                 if self._proc and self._proc.stdin:
                     self._proc.stdin.close()
@@ -2533,6 +3163,12 @@ class CuaMcpGlowProxy:
 
 
 def main() -> None:
+    if len(sys.argv) >= 2 and sys.argv[1] == "--devtools-proxy":
+        from cua_devtools_glow_proxy import run_devtools_glow_proxy
+
+        cmd = sys.argv[2:] or ["npx", "-y", "chrome-devtools-mcp@latest", "--autoConnect"]
+        sys.exit(run_devtools_glow_proxy(cmd))
+
     if len(sys.argv) >= 2 and sys.argv[1] == "--check-update":
         plugin_root = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
         force_flag = "--force" in sys.argv[2:]

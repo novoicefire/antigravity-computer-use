@@ -109,6 +109,8 @@ $requiredFiles = @(
     "plugin.json",
     "mcp_config.json",
     "bin\cua_window_glow_proxy.py",
+    "bin\cua_cdp_rescue.py",
+    "bin\cua_devtools_glow_proxy.py",
     "ui\chrome_tabs_picker.html",
     "rules\AGENTS.md",
     "skills\computer-use-setup\SKILL.md"
@@ -122,12 +124,30 @@ foreach ($rel in $requiredFiles) {
 if ($missingFiles.Count -eq 0) {
     Write-Check "PASS" "Plugin Files" "All core plugin files present."
     if ($pyCmd) {
-        $proxyPath = Join-Path $PluginDir "bin\cua_window_glow_proxy.py"
-        $compileOut = (& py -3 -B -c "import ast, sys; ast.parse(open(sys.argv[1], 'r', encoding='utf-8').read())" $proxyPath 2>&1) -join " "
-        if ($LASTEXITCODE -eq 0) {
-            Write-Check "PASS" "Proxy Syntax Check" "cua_window_glow_proxy.py syntax is valid."
+        $pyFiles = @(
+            "bin\cua_window_glow_proxy.py",
+            "bin\cua_cdp_rescue.py",
+            "bin\cua_devtools_glow_proxy.py"
+        )
+        $syntaxErrs = @()
+        foreach ($pf in $pyFiles) {
+            $fullPf = Join-Path $PluginDir $pf
+            $cOut = (& py -3 -B -c "import ast, sys; ast.parse(open(sys.argv[1], 'r', encoding='utf-8').read())" $fullPf 2>&1) -join " "
+            if ($LASTEXITCODE -ne 0) {
+                $syntaxErrs += "$pf : $cOut"
+            }
+        }
+        if ($syntaxErrs.Count -eq 0) {
+            $binDir = Join-Path $PluginDir "bin"
+            $impOut = (& py -3 -B -c "import sys; sys.path.insert(0, sys.argv[1]); import cua_cdp_rescue, cua_window_glow_proxy, cua_devtools_glow_proxy" $binDir 2>&1) -join " "
+            if ($LASTEXITCODE -eq 0) {
+                Write-Check "PASS" "Proxy Syntax & Import" "All Python proxy & rescue modules loaded cleanly."
+            } else {
+                Write-Check "FAIL" "Proxy Syntax & Import" $impOut
+                $failCount++
+            }
         } else {
-            Write-Check "FAIL" "Proxy Syntax Check" $compileOut
+            Write-Check "FAIL" "Proxy Syntax Check" ($syntaxErrs -join " | ")
             $failCount++
         }
     }

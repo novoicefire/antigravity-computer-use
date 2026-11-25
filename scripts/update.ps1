@@ -63,4 +63,4 @@ if (-not $SkipDoctor) {
 }
 
 Write-Host ""
-Write-Host "Tip: If mcp_config.json or cua_window_glow_proxy.py changed, toggle the plugin off/on in Antigravity Customizations (or restart Antigravity) to reload the MCP server." -ForegroundColor DarkGray
+Write-Host "Tip: If mcp_config.json or bin/*.py changed, toggle the plugin off/on in Antigravity Customizations (or restart Antigravity) to reload the MCP server." -ForegroundColor DarkGray

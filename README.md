@@ -8,12 +8,13 @@
 ## 核心特色
 
 - **不搶滑鼠、不搶焦點的背景操作**：透過 `cua-driver`（Windows UI Automation + Background `PostMessage` + Synthetic-Pen Injection）操作桌面軟體與視窗拖曳，你可以繼續工作完全不受干擾。
-- **已登入 Chrome 分頁感知（Tab-Aware）背景操作**：透過 `existing-profile` 與 `--autoConnect` 直接操作你平常已登入的 Chrome（保留所有登入狀態、Cookie、擴充功能），不會切走你正在看的分頁。
-- **切到才顯示、切走即隱藏的同色圓角外框**：代理層 (`bin/cua_window_glow_proxy.py`) 以 30 FPS 追蹤目標視窗與分頁，外框顏色與 `cua-driver` 虛擬游標 100% 同步（`agy-cursor` → `#4CCCE0`），並嚴格釘在目標視窗正上方一層 Z-Order，絕不穿透覆蓋前景視窗。
-- **聊天框 `@` 直接點選開啟中的網頁**：自動將 Chrome 分頁即時同步為 `trigger: manual` 規則（`~/.gemini/config/rules/chrome-tab-*.md`，未選取時 **0 Token**），輸入 `@chrome-tab` 或關鍵字即可指定操作該分頁。
-- **Antigravity 原生側邊欄「Chrome Tabs」面板 (MCP App)**：支援搜尋分頁、重整清單、一鍵 `+ 加入對話框` 貼上分頁 Context Pill。
+- **已登入 Chrome 分頁感知（Tab-Aware）背景操作與截圖**：透過 `existing-profile` 與 `--autoConnect` 直接操作你平常已登入的 Chrome（保留所有登入狀態、Cookie、擴充功能），即使你切換去看別的分頁或將其他視窗蓋在 Chrome 上方，AI 仍可在背景點擊、填表並透過 CDP 直接擷取該分頁畫面。
+- **高 DPI 雙向圓角霓虹光暈 ＋ 60 FPS 跨分頁防漏守衛**：代理層 (`bin/cua_window_glow_proxy.py` 與 `bin/cua_devtools_glow_proxy.py`) 自動依螢幕 DPI（支援 2.8K / 4K 200% 縮放與最大化視窗）渲染同色圓角內外光暈（`agy-cursor` → `#4CCCE0`），嚴格釘在目標視窗正上方一層 Z-Order；並以 **60 FPS（`<16ms`）** 即時監控分頁標題，切走或開新分頁瞬間隱藏外框與虛擬游標、切回才浮現（若背景執行時視窗被蓋住，切回目標分頁才開始計算顯示秒數）。
+- **Chrome 遠端桌面（`<canvas>`）與多視窗自動 CDP 救援**：內建零依賴本機 CDP WebSocket 救援通道 (`bin/cua_cdp_rescue.py`)，當多視窗觸發 `heuristic` 唯讀限制或操作 Chrome 遠端桌面等純 `<canvas>` 畫面時，自動無縫切換為背景像素座標點擊／拖曳／滾輪／鍵盤輸入與 `Page.captureScreenshot` 截圖。
+- **聊天框 `@` 直接點選開啟中的網頁**：自動將 Chrome 分頁即時同步為 `trigger: manual` 規則（`~/.gemini/config/rules/chrome-tab-*.md`，未選取時 **0 Token**），輸入 `@current`、`@chrome-tab` 或關鍵字即可指定操作該分頁。
+- **Antigravity 原生側邊欄「Chrome Tabs」面板 (MCP App)**：Geist 極簡黑白灰深淺自適應設計，顯示真實網站 Favicon、**`● 瀏覽中`** 即時標記與 **`[● 即時]`** 零閃爍自動刷新，單擊整列即可綁定分頁至對話框（支援多選與全鍵盤操作）。
 - **檔案下載／上傳無痛處理**：支援透過 `browser_download` / `browser_set_input_files` 繞過檔案總管彈窗直接存取檔案，也支援直接背景操作 Windows 檔案總管與「另存新檔」對話框。
-- **Git 驅動持續更新**：外掛本體就是 Git Repository，任何電腦一條指令（或一句話請 Antigravity）即可同步最新功能。
+- **Git 驅動持續更新**：外掛本體就是 Git Repository，支援背景無感自動更新，任何電腦一條指令（或一句話請 Antigravity）即可同步最新功能。
 
 ---
 
@@ -78,6 +79,10 @@ irm https://raw.githubusercontent.com/novoicefire/antigravity-computer-use/main/
 - 「幫我把 Chrome 的 YouTube 分頁從最左邊拖曳到最右邊」
 - 「幫我在背景打開檔案總管查看 `D:\Projects` 裡的最新檔案」
 
+### 4. 背景分頁截圖與 Chrome 遠端桌面最佳實務
+- **切換分頁或視窗被蓋住都能截圖**：使用瀏覽器分頁工具（`get_browser_state(include_screenshot=true)`）時，影像直接取自 Chrome 內部 CDP 渲染管線，即使你正在看 YouTube 或全螢幕使用 Antigravity 把 Chrome 蓋在底下，AI 都能拍出清晰完整的目標分頁畫面。
+- **「蓋在底下」優於「按 `—` 最小化」**：當需要頻繁擷取網頁畫面或透過 **Chrome 遠端桌面（`remotedesktop.google.com`）** 操控另一台電腦時，建議直接讓其他視窗蓋在 Chrome 上方即可，避免按右上角 `—` 縮進工作列（Windows 與 Chromium 對最小化視窗會啟動省電凍結，可能暫停 `<canvas>` 視訊流與新畫面繪製）。
+
 ---
 
 ## 持續更新與環境診斷
@@ -101,7 +106,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.gemini\co
 powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.gemini\config\plugins\computer-use\scripts\update.ps1" -UpgradeDriver
 ```
 
-> 若更新內容包含 `mcp_config.json` 或 `bin/cua_window_glow_proxy.py`，更新後在 Antigravity 外掛頁面將 `computer-use` 關閉再開一次（或重開 Antigravity）即可熱重載。
+> 若更新內容包含 `mcp_config.json` 或 `bin/*.py`，更新後在 Antigravity 外掛頁面將 `computer-use` 關閉再開一次（或重開 Antigravity）即可熱重載。
 
 ### 隨時執行環境健檢
 ```powershell
@@ -112,12 +117,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.gemini\co
 
 ## 客製化設定 (`mcp_config.json`)
 
-可在 `%USERPROFILE%\.gemini\config\plugins\computer-use\mcp_config.json` 的 `cua-driver.env` 調整外觀與行為：
+可在 `%USERPROFILE%\.gemini\config\plugins\computer-use\mcp_config.json` 的 `cua-driver.env`（及 `chrome-devtools.env`）調整外觀與行為：
 
 | 環境變數 | 預設值 | 說明 |
 | :--- | :--- | :--- |
 | `CUA_GLOW_COLOR` | `"auto"` | 自動與 `cua-driver` 虛擬游標同色（`agy-cursor` → `#4CCCE0`），也可指定任意 `#RRGGBB` 色碼（如 `"#A855F7"`） |
-| `CUA_GLOW_HOLD_SEC` | `"3.5"` | 桌面視窗最後一次操作後維持發光外框的秒數（Chrome 分頁模式會至少維持 `8.0` 秒以便切換分頁檢視） |
+| `CUA_GLOW_HOLD_SEC` | `"3.5"` | 桌面視窗最後一次操作後維持發光外框的秒數（Chrome 分頁模式會至少維持 `9.0` 秒，且支援背景遮擋「切回才開始倒數」） |
+| `CUA_EXCLUDE_FROM_CAPTURE` | `"false"` | 預設允許螢幕截圖／錄影拍到圓角螢光外框與代理游標以便驗證；設為 `"true"` 則啟用 `WDA_EXCLUDEFROMCAPTURE` 於截圖中自動隱形 |
 | `CUA_AUTO_UPDATE` | `"true"` | 啟動時背景自動 `git pull --ff-only` 更新外掛（設為 `"false"` 可關閉） |
 | `CUA_AUTO_UPDATE_INTERVAL_HOURS` | `"6"` | 背景自動檢查更新的最小間隔小時數 |
 
@@ -132,12 +138,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.gemini\co
 
 ```text
 antigravity-computer-use/
-├── plugin.json                      # Antigravity 外掛清單與中繼資料
-├── mcp_config.json                  # cua-driver (經螢光代理) + chrome-devtools MCP 設定
+├── plugin.json                      # Antigravity 外掛清單與中繼資料 (v1.4.0)
+├── mcp_config.json                  # cua-driver 與 chrome-devtools (雙通道螢光代理) MCP 設定
 ├── bin/
-│   └── cua_window_glow_proxy.py     # 同色圓角外框、30 FPS 分頁感知、@ 分頁同步與 Job Object 代理層
+│   ├── cua_window_glow_proxy.py     # 高 DPI 圓角內外光暈、60 FPS 跨分頁防漏守衛、@ 分頁同步與自癒代理層
+│   ├── cua_cdp_rescue.py            # 純標準庫 CDP WebSocket 救援通道 (<canvas>/遠端桌面座標操控與虛擬游標)
+│   └── cua_devtools_glow_proxy.py   # chrome-devtools MCP 分頁感知圓角光暈與虛擬游標包裝代理
 ├── ui/
-│   └── chrome_tabs_picker.html      # Antigravity MCP App 側邊欄分頁選擇器
+│   └── chrome_tabs_picker.html      # Antigravity MCP App 側邊欄分頁選擇器 (Geist 極簡主題 + 即時同步)
 ├── rules/
 │   └── AGENTS.md                    # 背景優先、Z-Order 鎖定、Qt/LINE 鍵盤與外部動作安全規則
 ├── skills/
@@ -146,7 +154,7 @@ antigravity-computer-use/
 ├── scripts/
 │   ├── install.ps1                  # 一鍵自動安裝腳本
 │   ├── update.ps1                   # 一鍵持續更新腳本
-│   └── doctor.ps1                   # 環境健檢腳本
+│   └── doctor.ps1                   # 環境健檢與 Python 模組語法/載入驗證腳本
 ├── INSTALL_FOR_AGENT.md             # 專給其他電腦 Antigravity 執行的自動部署手冊
 ├── CHANGELOG.md                     # 版本異動紀錄
 └── assets/logo.svg                  # 外掛圖示
