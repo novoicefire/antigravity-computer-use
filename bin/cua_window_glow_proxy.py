@@ -1055,6 +1055,14 @@ class CuaMcpGlowProxy:
         self._last_full_sync_mono: float = 0.0
         self._bg_sync_in_progress: bool = False
         self._last_viewing_tab_id: str = ""
+        self._last_agent_browser_call_mono: float = 0.0
+
+        self._stable_lock = threading.Lock()
+        self._stable_seq: int = 0
+        self._window_stable_tabs: dict[int, list[dict]] = {}
+        self._tab_id_to_stable_id: dict[str, str] = {}
+        self._stable_id_to_latest: dict[str, dict] = {}
+        self._target_id_to_latest_for_hwnd: dict[int, str] = {}
 
     # -- Safe stdio helpers -------------------------------------------------
     def _send_to_client(self, obj: dict) -> None:
@@ -1295,6 +1303,146 @@ class CuaMcpGlowProxy:
         except Exception:
             pass
 
+    def _assign_stable_ids_for_window(self, wid: int, win_tabs: list[dict]) -> None:
+        """
+        為同一個 Chrome 視窗的分頁配發跨刷新不變的 stable_id (stab-N)，
+        並維護舊 tab_id / target_id -> 最新綁定 ID 的透明映射表，防止刷新導致綁定失效。
+        """
+        with self._stable_lock:
+            prev_list = self._window_stable_tabs.get(wid, [])
+            used_prev_indices: set[int] = set()
+            assigned: list[str | None] = [None] * len(win_tabs)
+
+            for slot_idx, t in enumerate(win_tabs):
+                t["_slot_idx"] = slot_idx
+
+            # Pass 1: 相同位置 + 相同網址
+            for i, t in enumerate(win_tabs):
+                url = t.get("url") or ""
+                for pi, pt in enumerate(prev_list):
+                    if pi not in used_prev_indices and pt.get("_slot_idx") == i and (pt.get("url") or "") == url:
+                        assigned[i] = pt["stable_id"]
+                        used_prev_indices.add(pi)
+                        break
+
+            # Pass 2: 分頁順序拖曳變動，但網址 + 標題完全一致
+            for i, t in enumerate(win_tabs):
+                if assigned[i] is not None:
+                    continue
+                url = t.get("url") or ""
+                title = t.get("title") or ""
+                for pi, pt in enumerate(prev_list):
+                    if (
+                        pi not in used_prev_indices
+                        and (pt.get("url") or "") == url
+                        and (pt.get("title") or "") == title
+                    ):
+                        assigned[i] = pt["stable_id"]
+                        used_prev_indices.add(pi)
+                        break
+
+            # Pass 3: 網址一致（例如 Gmail 收件匣未讀數更新導致標題微調）
+            for i, t in enumerate(win_tabs):
+                if assigned[i] is not None:
+                    continue
+                url = t.get("url") or ""
+                if not url:
+                    continue
+                for pi, pt in enumerate(prev_list):
+                    if pi not in used_prev_indices and (pt.get("url") or "") == url:
+                        assigned[i] = pt["stable_id"]
+                        used_prev_indices.add(pi)
+                        break
+
+            # Pass 4: 分頁總數未變且位於同一槽位（使用者在該已綁定分頁內點擊連結導覽至新網址）
+            if len(win_tabs) == len(prev_list):
+                for i, t in enumerate(win_tabs):
+                    if assigned[i] is not None:
+                        continue
+                    for pi, pt in enumerate(prev_list):
+                        if pi not in used_prev_indices and pt.get("_slot_idx") == i:
+                            assigned[i] = pt["stable_id"]
+                            used_prev_indices.add(pi)
+                            break
+
+            # Pass 5: 全新開啟的分頁配發新 stable_id
+            active_sids_in_win: set[str] = set()
+            latest_tid = ""
+            for i, t in enumerate(win_tabs):
+                sid = assigned[i]
+                if not sid:
+                    self._stable_seq += 1
+                    sid = f"stab-{self._stable_seq}"
+                t["stable_id"] = sid
+                active_sids_in_win.add(sid)
+
+                tab_id = str(t.get("tab_id") or "")
+                tid = str(t.get("target_id") or "")
+                if tid:
+                    latest_tid = tid
+                if tab_id:
+                    self._tab_id_to_stable_id[tab_id] = sid
+                self._tab_id_to_stable_id[sid] = sid
+                if len(self._tab_id_to_stable_id) > 4096:
+                    # 淘汰最早的歷史對應，避免長時執行累積記憶體
+                    oldest_key = next(iter(self._tab_id_to_stable_id))
+                    self._tab_id_to_stable_id.pop(oldest_key, None)
+                self._stable_id_to_latest[sid] = dict(t)
+
+            # 清理此視窗中真正已關閉的分頁
+            for pi, pt in enumerate(prev_list):
+                old_sid = pt.get("stable_id")
+                if old_sid and old_sid not in active_sids_in_win:
+                    self._stable_id_to_latest.pop(old_sid, None)
+
+            if latest_tid:
+                self._target_id_to_latest_for_hwnd[wid] = latest_tid
+            self._window_stable_tabs[wid] = [dict(t) for t in win_tabs]
+
+    def _prune_closed_windows_stable_tabs(self, open_wids: set[int]) -> None:
+        with self._stable_lock:
+            closed_wids = [w for w in self._window_stable_tabs if w not in open_wids]
+            for w in closed_wids:
+                old_tabs = self._window_stable_tabs.pop(w, [])
+                self._target_id_to_latest_for_hwnd.pop(w, None)
+                for pt in old_tabs:
+                    sid = pt.get("stable_id")
+                    if sid:
+                        self._stable_id_to_latest.pop(sid, None)
+
+    def _remap_stale_browser_ids_in_args(self, args: dict) -> bool:
+        """若 Agent 傳入舊版（刷新前）的 target_id / tab_id，自動透明映射為最新有效 ID。"""
+        if not isinstance(args, dict):
+            return False
+        changed = False
+        req_tab_id = args.get("tab_id")
+        req_target_id = args.get("target_id")
+
+        with self._stable_lock:
+            if isinstance(req_tab_id, str) and req_tab_id:
+                sid = self._tab_id_to_stable_id.get(req_tab_id)
+                if sid:
+                    latest = self._stable_id_to_latest.get(sid)
+                    if latest:
+                        live_tab_id = str(latest.get("tab_id") or "")
+                        live_tid = str(latest.get("target_id") or "")
+                        if live_tab_id and live_tab_id != req_tab_id:
+                            args["tab_id"] = live_tab_id
+                            changed = True
+                        if live_tid and live_tid != req_target_id:
+                            args["target_id"] = live_tid
+                            changed = True
+                        return changed
+
+            if isinstance(req_target_id, str) and req_target_id:
+                hwnd = self.browser_target_to_hwnd.get(req_target_id, 0)
+                if hwnd > 0:
+                    live_tid = self._target_id_to_latest_for_hwnd.get(hwnd, "")
+                    if live_tid and live_tid != req_target_id:
+                        args["target_id"] = live_tid
+                        changed = True
+        return changed
+
     # -- @ 選單規則同步 (~/.gemini/config/rules/chrome-tab-*.md) -------------
     def _sync_chrome_tab_rules(self, tabs_list: list[dict]) -> int:
         """將開啟中的 Chrome 分頁同步為 trigger: manual 規則檔，支援聊天框直接 @ 選取且不選取時 0 Token。"""
@@ -1454,6 +1602,7 @@ class CuaMcpGlowProxy:
                                 windows.append({"pid": p_val, "window_id": w_val})
 
             if not windows:
+                self._prune_closed_windows_stable_tabs(set())
                 self._sync_chrome_tab_rules([])
                 no_win_payload = {
                     "tabs": [],
@@ -1507,6 +1656,7 @@ class CuaMcpGlowProxy:
                         if tid:
                             self.browser_target_to_hwnd[tid] = wid
                             self.browser_target_to_pid[tid] = pid
+                    win_tabs: list[dict] = []
                     for t in bs_sc["tabs"]:
                         if not isinstance(t, dict):
                             continue
@@ -1521,14 +1671,22 @@ class CuaMcpGlowProxy:
                             "url": t.get("url") or "",
                             "active": t.get("active"),
                         }
-                        if tab_id:
-                            with self._state_lock:
-                                self.tab_id_to_info[tab_id] = info
-                        collected_tabs.append(info)
+                        win_tabs.append(info)
+                    self._assign_stable_ids_for_window(wid, win_tabs)
+                    with self._state_lock:
+                        for info in win_tabs:
+                            if info.get("tab_id"):
+                                self.tab_id_to_info[info["tab_id"]] = info
+                    collected_tabs.extend(win_tabs)
                 elif isinstance(bs_res, dict) and bs_res.get("isError"):
                     c_list = bs_res.get("content") or []
                     if c_list and isinstance(c_list[0], dict):
                         last_error = c_list[0].get("text") or last_error
+
+            open_wids = {int(w["window_id"]) for w in windows if isinstance(w.get("window_id"), int)}
+            self._prune_closed_windows_stable_tabs(open_wids)
+            for t in collected_tabs:
+                t.pop("_slot_idx", None)
 
             self._apply_live_viewing_markers(collected_tabs)
             if include_favicons:
@@ -1553,10 +1711,13 @@ class CuaMcpGlowProxy:
             return result_payload
 
     def _background_tab_sync_loop(self) -> None:
-        """背景輕量同步執行緒：啟動後自動同步一次，之後每 15 秒同步新開／關閉的 Chrome 分頁。"""
+        """背景輕量同步執行緒：啟動後自動同步一次，之後僅在閒置且未干擾 Agent 操作時同步。"""
         time.sleep(2.0)
         while self._running:
-            if self._initialized and self._client_inflight == 0:
+            now_mono = time.monotonic()
+            agent_idle = (now_mono - self._last_agent_browser_call_mono) >= 20.0
+            sync_stale = (now_mono - self._last_full_sync_mono) >= 14.0
+            if self._initialized and self._client_inflight == 0 and agent_idle and sync_stale:
                 try:
                     self._sync_all_chrome_tabs()
                 except Exception:
@@ -1821,8 +1982,10 @@ class CuaMcpGlowProxy:
                             self._cached_tabs_payload["tabs"] = [dict(t) for t in tabs_copy]
                             self._cached_tabs_payload["updated_at"] = updated_at
 
-                age = time.monotonic() - last_mono
-                if (needs_resync or age >= 3.2) and self._client_inflight == 0:
+                now_mono = time.monotonic()
+                age = now_mono - last_mono
+                agent_idle = (now_mono - self._last_agent_browser_call_mono) >= 20.0
+                if (needs_resync or age >= 15.0) and self._client_inflight == 0 and agent_idle:
                     self._trigger_async_full_sync()
 
                 payload = {
@@ -2112,6 +2275,12 @@ class CuaMcpGlowProxy:
                 ).start()
                 return
 
+            is_browser_tool = tool_name == "get_browser_state" or tool_name.startswith("browser_")
+            args_remapped = False
+            if is_browser_tool and isinstance(args, dict):
+                self._last_agent_browser_call_mono = time.monotonic()
+                args_remapped = self._remap_stale_browser_ids_in_args(args)
+
             session_name = args.get("session") if isinstance(args, dict) else None
             with self._state_lock:
                 self._client_inflight += 1
@@ -2133,6 +2302,10 @@ class CuaMcpGlowProxy:
             # 只有對特定分頁或原生視窗操作才點亮外框（bind-only get_browser_state 不先強亮整個 Chrome，待看 tab）
             if hwnd > 0 and not (tool_name == "get_browser_state" and not args.get("tab_id")):
                 self.overlay.highlight_window(hwnd, sess, expected_tab_title=tab_title)
+
+            if args_remapped:
+                self._send_to_upstream((json.dumps(msg, ensure_ascii=False) + "\n").encode("utf-8"))
+                return
 
         elif req_id is not None and method in ("initialize", "tools/list"):
             with self._state_lock:
@@ -2235,6 +2408,7 @@ class CuaMcpGlowProxy:
 
                     tabs = sc.get("tabs")
                     if isinstance(tabs, list) and tabs:
+                        win_tabs_srv: list[dict] = []
                         for t in tabs:
                             if isinstance(t, dict) and t.get("tab_id"):
                                 info = {
@@ -2246,8 +2420,14 @@ class CuaMcpGlowProxy:
                                     "url": t.get("url") or "",
                                     "active": t.get("active"),
                                 }
-                                self.tab_id_to_info[t["tab_id"]] = info
-                        updated_tabs_for_rules = list(self.tab_id_to_info.values())
+                                win_tabs_srv.append(info)
+                        if detected_hwnd > 0 and win_tabs_srv:
+                            self._assign_stable_ids_for_window(detected_hwnd, win_tabs_srv)
+                        for info in win_tabs_srv:
+                            info.pop("_slot_idx", None)
+                            self.tab_id_to_info[info["tab_id"]] = info
+                        with self._stable_lock:
+                            updated_tabs_for_rules = list(self._stable_id_to_latest.values())
 
                     # 單一分頁 snapshot 或 browser_navigate 後更新該 tab_id 的最新標題
                     sc_tab_id = sc.get("tab_id") or req_tab_id

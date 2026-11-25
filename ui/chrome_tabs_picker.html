@@ -906,6 +906,10 @@ container holding the app. Specify either width or maxWidth, and either height o
       .replace(/"/g, "&quot;");
   }
 
+  function tabKey(tab) {
+    return String((tab && (tab.stable_id || tab.tab_id)) || "");
+  }
+
   function applyThemeCleanly(theme, variables) {
     const killer = document.createElement("style");
     killer.textContent = "*,*::before,*::after{transition:none !important}";
@@ -1042,7 +1046,7 @@ container holding the app. Specify either width or maxWidth, and either height o
       ? "loading"
       : ((errorMsg && allTabs.length === 0) ? ("err:" + errorMsg) : "list");
     const rowsSig = filtered.map(t => [
-      t.tab_id || "",
+      tabKey(t),
       t.title || "",
       t.url || "",
       t.viewing ? 1 : 0,
@@ -1080,10 +1084,10 @@ container holding the app. Specify either width or maxWidth, and either height o
     refreshBtn.classList.toggle("is-loading", isLoading);
     refreshBtn.disabled = isLoading;
 
-    // Prune stale selected IDs if tabs closed
+    // Prune stale selected IDs only when a tab is genuinely closed in Chrome
     let selectionPruned = false;
     if (allTabs.length > 0 && selectedIds.size > 0) {
-      const liveSet = new Set(allTabs.map(t => t.tab_id));
+      const liveSet = new Set(allTabs.map(t => tabKey(t)));
       for (const id of Array.from(selectedIds)) {
         if (!liveSet.has(id)) {
           selectedIds.delete(id);
@@ -1179,9 +1183,10 @@ container holding the app. Specify either width or maxWidth, and either height o
         `);
       }
 
-      const isSel = selectedIds.has(t.tab_id);
+      const key = tabKey(t);
+      const isSel = selectedIds.has(key);
       const isKb = idx === kbFocusIndex;
-      const isCopied = copiedTabId === t.tab_id;
+      const isCopied = copiedTabId === key;
       const parsed = parseUrlParts(t.url);
       const siteIconHtml = buildSiteIconHtml(t, parsed);
       const titleText = t.title || "未命名分頁";
@@ -1195,7 +1200,7 @@ container holding the app. Specify either width or maxWidth, and either height o
       }
 
       const checkControl = canAttachContext
-        ? `<button class="check-btn" type="button" data-action="multi" data-tab-id="${esc(t.tab_id)}" title="${isSel ? "取消綁定此分頁" : "多選加入此分頁"}">
+        ? `<button class="check-btn" type="button" data-action="multi" data-tab-id="${esc(key)}" title="${isSel ? "取消綁定此分頁" : "多選加入此分頁"}">
             ${isSel
               ? '<span class="check-filled"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>'
               : '<span class="check-ring"></span>'}
@@ -1207,7 +1212,7 @@ container holding the app. Specify either width or maxWidth, and either height o
              role="option"
              aria-selected="${isSel ? "true" : "false"}"
              data-row-index="${idx}"
-             data-tab-id="${esc(t.tab_id)}">
+             data-tab-id="${esc(key)}">
           <span class="row-accent-bar"></span>
           ${siteIconHtml}
           <div class="tab-main">
@@ -1223,7 +1228,7 @@ container holding the app. Specify either width or maxWidth, and either height o
             <button class="icon-btn copy-btn${isCopied ? " is-copied" : ""}"
                     type="button"
                     data-action="copy"
-                    data-tab-id="${esc(t.tab_id)}"
+                    data-tab-id="${esc(key)}"
                     title="複製 ${esc(mentionText)}">
               <svg class="ic-at" width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>
               <svg class="ic-ok" width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -1262,7 +1267,7 @@ container holding the app. Specify either width or maxWidth, and either height o
       let label = "";
       if (selectedIds.size === 1) {
         const onlyId = Array.from(selectedIds)[0];
-        const tab = allTabs.find(x => x.tab_id === onlyId);
+        const tab = allTabs.find(x => tabKey(x) === onlyId);
         label = tab ? `已綁定：${tab.title || "1 個分頁"}` : "已綁定 1 個分頁";
       } else {
         label = `已綁定 ${selectedIds.size} 個分頁至對話`;
@@ -1291,7 +1296,7 @@ container holding the app. Specify either width or maxWidth, and either height o
 
   async function syncSelectionToHost() {
     if (!canAttachContext) return;
-    const chosen = allTabs.filter(t => selectedIds.has(t.tab_id));
+    const chosen = allTabs.filter(t => selectedIds.has(tabKey(t)));
     if (chosen.length === 0) {
       try {
         await app.updateModelContext({ content: [] });
@@ -1328,7 +1333,7 @@ container holding the app. Specify either width or maxWidth, and either height o
   }
 
   async function copyTabMention(tabId) {
-    const tab = allTabs.find(t => t.tab_id === tabId);
+    const tab = allTabs.find(t => tabKey(t) === tabId);
     if (!tab) return;
     const mention = "@" + (tab.rule_name || "chrome-tab");
     try {
@@ -1393,11 +1398,11 @@ container holding the app. Specify either width or maxWidth, and either height o
       isLoading = false;
     }
 
-    // 若目前已綁定的分頁發生了網址或標題導覽變更，自動同步更新 Context Pill
+    // 若目前已綁定的分頁刷新了底層 target_id/tab_id 或發生網址/標題變更，自動無縫更新 Context Pill 而不解除綁定
     if (canAttachContext && selectedIds.size > 0) {
       const sig = allTabs
-        .filter(t => selectedIds.has(t.tab_id))
-        .map(t => `${t.tab_id}:${t.title}:${t.url}`)
+        .filter(t => selectedIds.has(tabKey(t)))
+        .map(t => `${tabKey(t)}:${t.target_id}:${t.tab_id}:${t.title}:${t.url}`)
         .join("||");
       if (sig && sig !== lastBoundSelectionSig) {
         lastBoundSelectionSig = sig;
@@ -1570,8 +1575,9 @@ container holding the app. Specify either width or maxWidth, and either height o
     } else if (e.key === "Enter" && kbFocusIndex >= 0 && kbFocusIndex < filtered.length) {
       e.preventDefault();
       const target = filtered[kbFocusIndex];
-      if (target && target.tab_id) {
-        handleRowSelect(target.tab_id, e.ctrlKey || e.metaKey || e.shiftKey);
+      const key = tabKey(target);
+      if (key) {
+        handleRowSelect(key, e.ctrlKey || e.metaKey || e.shiftKey);
       }
     }
   });

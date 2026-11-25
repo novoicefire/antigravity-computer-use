@@ -3,6 +3,14 @@
 
 All notable changes to **antigravity-computer-use** will be documented in this file.
 
+## [1.3.1] - 2026-11-25
+
+### Fixed
+- **修正刷新分頁後網站綁定失效的問題 (`bin/cua_window_glow_proxy.py`、`ui/chrome_tabs_picker.html`)**：
+  - 根因：`cua-driver` 每次呼叫 `get_browser_state(pid, window_id)` 重新掃描分頁時都會重新配發新的 `target_id` 與 `tab_id` UUID，導致側邊欄誤判已綁定分頁已關閉而清除勾選與對話框 Context Pill，同時也讓先前貼入對話框的舊 `target_id`/`tab_id` 過期。
+  - 修正 1（跨刷新持久 `stable_id`）：代理層為每個分頁配發跨刷新不變的 `stable_id`（支援分頁拖曳排序、未讀數字變動與同分頁導覽追蹤），前端改以 `stable_id` 維護勾選狀態並自動無縫同步最新底層 ID 至對話框 Context Pill，無論手動刷新或自動刷新多少次都不再掉綁定。
+  - 修正 2（舊版 `target_id`/`tab_id` 透明自動映射）：代理層攔截 `get_browser_state` 與 `browser_*` 呼叫時，若偵測到傳入刷新前的舊 `tab_id`/`target_id`，自動透明替換為最新有效綁定 ID，徹底消除 `is not a live binding in this session` 錯誤，並在 AI 執行瀏覽器操作期間自動暫緩背景重綁 20 秒。
+
 ## [1.3.0] - 2026-11-25
 
 ### Added
