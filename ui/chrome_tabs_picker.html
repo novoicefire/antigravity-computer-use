@@ -753,6 +753,7 @@ container holding the app. Specify either width or maxWidth, and either height o
   let isLoading = true;
   let updatedAt = "";
   let errorMsg = "";
+  let autoUpdateInfo = null;
   let canAttachContext = false;
   let kbFocusIndex = -1;
   let copiedTabId = null;
@@ -1090,6 +1091,15 @@ container holding the app. Specify either width or maxWidth, and either height o
         <span class="footer-text is-bound tabular" title="${esc(label)}">${esc(label)}</span>
       `;
       clearAttachBtn.style.display = "inline-block";
+    } else if (autoUpdateInfo && autoUpdateInfo.status === "updated") {
+      const note = autoUpdateInfo.restart_needed
+        ? `已自動更新至 ${autoUpdateInfo.to_rev || "最新版"}（重載外掛後生效）`
+        : `已自動更新至 ${autoUpdateInfo.to_rev || "最新版"}`;
+      footerStatusEl.innerHTML = `
+        <span class="footer-dot"></span>
+        <span class="footer-text tabular" title="${esc(note)}">${esc(note)}</span>
+      `;
+      clearAttachBtn.style.display = "none";
     } else {
       footerStatusEl.innerHTML = `
         <span class="footer-text tabular">點擊分頁附加至對話${updatedAt ? " · " + esc(updatedAt) : ""}</span>
@@ -1192,6 +1202,7 @@ container holding the app. Specify either width or maxWidth, and either height o
       if (Array.isArray(sc.tabs)) allTabs = sc.tabs;
       if (typeof sc.window_count === "number" && sc.window_count > 0) windowCount = sc.window_count;
       if (sc.updated_at) updatedAt = sc.updated_at;
+      if (sc.auto_update && typeof sc.auto_update === "object") autoUpdateInfo = sc.auto_update;
       errorMsg = sc.error || "";
     }
     isLoading = false;

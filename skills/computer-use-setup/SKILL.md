@@ -65,8 +65,10 @@ To customize the border color or hold duration, edit `env` in `~/.gemini/config/
    powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.gemini\config\plugins\computer-use\scripts\doctor.ps1"
    ```
 2. **Update plugin from GitHub** (`https://github.com/novoicefire/antigravity-computer-use`):
-   ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.gemini\config\plugins\computer-use\scripts\update.ps1"
-   ```
+   - Background auto-update (`git pull --ff-only` on clean `main` every `CUA_AUTO_UPDATE_INTERVAL_HOURS`, default `6`h) is enabled by default via `CUA_AUTO_UPDATE: "true"` in `mcp_config.json`.
+   - To trigger an immediate manual update (or check status):
+     ```powershell
+     powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.gemini\config\plugins\computer-use\scripts\update.ps1"
+     ```
    - Add `-UpgradeDriver` to also upgrade `cua-driver.exe` to the latest upstream release.
    - If `mcp_config.json` or `bin/cua_window_glow_proxy.py` changed, instruct the user to toggle `[computer-use](customization://computer-use)` off and back on (or restart Antigravity) to reload the MCP server.

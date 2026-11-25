@@ -19,7 +19,9 @@
       ],
       "env": {
         "CUA_GLOW_COLOR": "auto",
-        "CUA_GLOW_HOLD_SEC": "3.5"
+        "CUA_GLOW_HOLD_SEC": "3.5",
+        "CUA_AUTO_UPDATE": "true",
+        "CUA_AUTO_UPDATE_INTERVAL_HOURS": "6"
       }
     }
   }

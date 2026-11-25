@@ -20,6 +20,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -148,6 +149,110 @@ def discover_cua_driver_binary() -> str:
         if path and os.path.isfile(path):
             return path
     return "cua-driver.exe"
+
+
+def run_safe_auto_update(plugin_root: str, force: bool = False) -> dict:
+    """安全背景自動更新（僅於 main 分支且無本機修改時執行 git pull --ff-only）。"""
+    enabled = os.environ.get("CUA_AUTO_UPDATE", "true").strip().lower()
+    if enabled in ("0", "false", "no", "off"):
+        return {"status": "disabled"}
+
+    if not os.path.isdir(os.path.join(plugin_root, ".git")):
+        return {"status": "not_git"}
+
+    git_bin = shutil.which("git")
+    if not git_bin:
+        return {"status": "no_git"}
+
+    try:
+        interval_hours = max(0.0, float(os.environ.get("CUA_AUTO_UPDATE_INTERVAL_HOURS", "6")))
+    except ValueError:
+        interval_hours = 6.0
+
+    marker_path = os.path.join(tempfile.gettempdir(), "antigravity_computer_use_last_update_check.txt")
+    now_ts = time.time()
+    if not force and interval_hours > 0 and os.path.isfile(marker_path):
+        try:
+            age_sec = now_ts - os.path.getmtime(marker_path)
+            if 0 <= age_sec < interval_hours * 3600.0:
+                return {"status": "cooldown"}
+        except OSError:
+            pass
+
+    git_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    creation_flags = 0x08000000 if os.name == "nt" else 0  # CREATE_NO_WINDOW
+
+    def _git(args: list[str], timeout: float = 12.0) -> subprocess.CompletedProcess | None:
+        try:
+            return subprocess.run(
+                [git_bin, "-C", plugin_root, *args],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                env=git_env,
+                creationflags=creation_flags,
+            )
+        except Exception:
+            return None
+
+    r_branch = _git(["rev-parse", "--abbrev-ref", "HEAD"], timeout=5.0)
+    if not r_branch or r_branch.returncode != 0:
+        return {"status": "git_error"}
+    branch = (r_branch.stdout or "").strip()
+    if branch != "main":
+        return {"status": "skipped_branch", "branch": branch}
+
+    r_dirty = _git(["status", "--porcelain"], timeout=5.0)
+    if not r_dirty or r_dirty.returncode != 0:
+        return {"status": "git_error"}
+    if (r_dirty.stdout or "").strip():
+        return {"status": "skipped_dirty"}
+
+    r_head = _git(["rev-parse", "--short", "HEAD"], timeout=5.0)
+    before_rev = (r_head.stdout or "").strip() if r_head and r_head.returncode == 0 else ""
+
+    r_fetch = _git(["fetch", "--quiet", "--tags", "origin"], timeout=12.0)
+    if not r_fetch or r_fetch.returncode != 0:
+        return {"status": "offline"}
+
+    try:
+        with open(marker_path, "w", encoding="utf-8") as mf:
+            mf.write(f"{int(now_ts)}\n")
+    except OSError:
+        pass
+
+    r_count = _git(["rev-list", "--count", "HEAD..origin/main"], timeout=5.0)
+    try:
+        behind = int((r_count.stdout or "0").strip()) if r_count and r_count.returncode == 0 else 0
+    except ValueError:
+        behind = 0
+
+    if behind <= 0:
+        return {"status": "up_to_date", "rev": before_rev}
+
+    r_diff = _git(["diff", "--name-only", "HEAD..origin/main"], timeout=5.0)
+    changed_files = [
+        line.strip()
+        for line in ((r_diff.stdout or "").splitlines() if r_diff and r_diff.returncode == 0 else [])
+        if line.strip()
+    ]
+
+    r_pull = _git(["pull", "--ff-only", "--quiet", "origin", "main"], timeout=15.0)
+    if not r_pull or r_pull.returncode != 0:
+        return {"status": "diverged"}
+
+    r_after = _git(["rev-parse", "--short", "HEAD"], timeout=5.0)
+    after_rev = (r_after.stdout or "").strip() if r_after and r_after.returncode == 0 else ""
+    restart_needed = any(
+        f in ("bin/cua_window_glow_proxy.py", "mcp_config.json") for f in changed_files
+    )
+    return {
+        "status": "updated",
+        "from_rev": before_rev,
+        "to_rev": after_rev,
+        "changed_files": changed_files,
+        "restart_needed": restart_needed,
+    }
 
 
 def normalize_browser_title(title: str) -> str:
@@ -890,11 +995,13 @@ class CuaMcpGlowProxy:
         self._last_client_meta: dict | None = None
 
         self._rules_dir = os.path.expanduser("~/.gemini/config/rules")
-        self._ui_html_path = os.path.normpath(
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ui", "chrome_tabs_picker.html")
+        self._plugin_root = os.path.normpath(
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
         )
+        self._ui_html_path = os.path.join(self._plugin_root, "ui", "chrome_tabs_picker.html")
         self._favicon_cache: dict[str, tuple[str, float]] = {}
         self._favicon_lock = threading.Lock()
+        self._auto_update_result: dict | None = None
 
     # -- Safe stdio helpers -------------------------------------------------
     def _send_to_client(self, obj: dict) -> None:
@@ -1164,6 +1271,32 @@ class CuaMcpGlowProxy:
                     break
                 time.sleep(0.1)
 
+    def _background_auto_update_loop(self) -> None:
+        """背景無感自動更新執行緒：啟動後延遲 4 秒檢查一次，之後依設定間隔定期檢查 origin/main。"""
+        for _ in range(40):  # 4 seconds initial delay so MCP startup stays instant
+            if not self._running:
+                return
+            time.sleep(0.1)
+
+        try:
+            interval_hours = max(0.5, float(os.environ.get("CUA_AUTO_UPDATE_INTERVAL_HOURS", "6")))
+        except ValueError:
+            interval_hours = 6.0
+        sleep_ticks = max(600, int(interval_hours * 3600))
+
+        while self._running:
+            try:
+                res = run_safe_auto_update(self._plugin_root, force=False)
+                if res.get("status") == "updated":
+                    self._auto_update_result = res
+            except Exception:
+                pass
+
+            for _ in range(sleep_ticks):
+                if not self._running:
+                    return
+                time.sleep(1.0)
+
     # -- Virtual MCP App Tools & Resources ----------------------------------
     def _virtual_tools_descriptors(self) -> list[dict]:
         return [
@@ -1313,6 +1446,8 @@ class CuaMcpGlowProxy:
         payload = self._sync_all_chrome_tabs()
         tabs = payload.get("tabs") or []
         self._populate_tab_favicons(tabs)
+        if self._auto_update_result and self._auto_update_result.get("status") == "updated":
+            payload["auto_update"] = self._auto_update_result
         if tabs:
             lines = [f"已同步 {len(tabs)} 個開啟中的 Chrome 分頁（皆可於聊天框以 @chrome-tab 選取）："]
             for i, t in enumerate(tabs, start=1):
@@ -1767,6 +1902,9 @@ class CuaMcpGlowProxy:
         sync_thread = threading.Thread(target=self._background_tab_sync_loop, daemon=True)
         sync_thread.start()
 
+        update_thread = threading.Thread(target=self._background_auto_update_loop, daemon=True)
+        update_thread.start()
+
         try:
             while True:
                 line = sys.stdin.buffer.readline()
@@ -1793,6 +1931,13 @@ class CuaMcpGlowProxy:
 
 
 def main() -> None:
+    if len(sys.argv) >= 2 and sys.argv[1] == "--check-update":
+        plugin_root = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+        force_flag = "--force" in sys.argv[2:]
+        res = run_safe_auto_update(plugin_root, force=force_flag)
+        print(json.dumps(res, ensure_ascii=False))
+        return
+
     if len(sys.argv) >= 3 and sys.argv[1] == "--test-hwnd":
         hwnd = int(sys.argv[2])
         sess = sys.argv[3] if len(sys.argv) >= 4 else "agy-cursor"

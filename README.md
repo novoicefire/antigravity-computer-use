@@ -81,7 +81,12 @@ irm https://raw.githubusercontent.com/novoicefire/antigravity-computer-use/main/
 
 ## 持續更新與環境診斷
 
-### 一鍵更新到最新版
+### 背景無感自動更新（預設啟用）
+- 只要是透過上述安裝方式（Git 追蹤模式）安裝的電腦，每次啟動 Antigravity（以及持續執行每 6 小時），外掛會自動在背景檢查 `origin/main` 並執行 **`git pull --ff-only`**，全程不彈視窗、不影響啟動速度。
+- **多重安全保護**：僅在 `main` 分支且無本機修改時才會自動拉取；若你有自訂修改或處於離線狀態會自動靜默略過。
+- 若想關閉自動更新或調整間隔，可在 `mcp_config.json` 的 `env` 調整 `CUA_AUTO_UPDATE`（`"false"` 關閉）與 `CUA_AUTO_UPDATE_INTERVAL_HOURS`（預設 `"6"`）。
+
+### 立即手動更新（或順便升級 `cua-driver`）
 你可以直接對 Antigravity 說：
 > 「幫我更新 `computer-use` 外掛」
 
@@ -112,6 +117,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.gemini\co
 | :--- | :--- | :--- |
 | `CUA_GLOW_COLOR` | `"auto"` | 自動與 `cua-driver` 虛擬游標同色（`agy-cursor` → `#4CCCE0`），也可指定任意 `#RRGGBB` 色碼（如 `"#A855F7"`） |
 | `CUA_GLOW_HOLD_SEC` | `"3.5"` | 桌面視窗最後一次操作後維持發光外框的秒數（Chrome 分頁模式會至少維持 `8.0` 秒以便切換分頁檢視） |
+| `CUA_AUTO_UPDATE` | `"true"` | 啟動時背景自動 `git pull --ff-only` 更新外掛（設為 `"false"` 可關閉） |
+| `CUA_AUTO_UPDATE_INTERVAL_HOURS` | `"6"` | 背景自動檢查更新的最小間隔小時數 |
 
 > 單獨測試某個視窗 HWND 的圓角螢光外框效果：
 > ```powershell

@@ -3,6 +3,15 @@
 
 All notable changes to **antigravity-computer-use** will be documented in this file.
 
+## [1.2.0] - 2026-11-25
+
+### Added
+- **背景無感自動更新（Silent Auto-Update）**：
+  - 每次 Antigravity 啟動 `computer-use` MCP 時，代理層 (`bin/cua_window_glow_proxy.py`) 會延遲 4 秒於背景自動檢查 `origin/main` 並執行安全的 `git pull --ff-only`（預設每 6 小時檢查一次，不阻塞啟動、不彈黑窗）。
+  - 內建多重保護護欄：僅在 `main` 分支且工作目錄無未提交修改時才會拉取更新；離線或有本機修改時靜默略過、絕不覆寫使用者修改。
+  - 支援於 `mcp_config.json` 透過 `CUA_AUTO_UPDATE`（預設 `"true"`）與 `CUA_AUTO_UPDATE_INTERVAL_HOURS`（預設 `"6"`）客製開關與頻率。
+  - 若背景自動拉取了新版程式，側邊欄 `Chrome Tabs` 底部狀態列會低調提示更新版本。
+
 ## [1.1.0] - 2026-11-25
 
 ### Changed
