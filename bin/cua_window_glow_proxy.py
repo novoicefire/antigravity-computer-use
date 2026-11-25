@@ -7,6 +7,8 @@
 
 from __future__ import annotations
 
+import base64
+import concurrent.futures
 import ctypes
 from ctypes import wintypes
 import datetime
@@ -21,6 +23,7 @@ import sys
 import threading
 import time
 import urllib.parse
+import urllib.request
 
 # ---------------------------------------------------------------------------
 # Win32 / DWM / Job Object Constants & Structures
@@ -890,6 +893,8 @@ class CuaMcpGlowProxy:
         self._ui_html_path = os.path.normpath(
             os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ui", "chrome_tabs_picker.html")
         )
+        self._favicon_cache: dict[str, tuple[str, float]] = {}
+        self._favicon_lock = threading.Lock()
 
     # -- Safe stdio helpers -------------------------------------------------
     def _send_to_client(self, obj: dict) -> None:
@@ -1065,15 +1070,15 @@ class CuaMcpGlowProxy:
                                 windows.append({"pid": p_val, "window_id": w_val})
 
             if not windows:
-                diag = json.dumps(lw_resp, ensure_ascii=False)[:260]
                 return {
                     "tabs": [],
+                    "window_count": 0,
                     "synced_rules_count": 0,
                     "updated_at": now_str,
-                    "error": f"目前沒有偵測到開啟中的 Google Chrome 視窗。(diag: {diag})",
+                    "error": "目前沒有偵測到開啟中的 Google Chrome 視窗。",
                 }
 
-            for win in windows:
+            for win_idx, win in enumerate(windows, start=1):
                 pid = win.get("pid")
                 wid = win.get("window_id")
                 if not isinstance(pid, int) or not isinstance(wid, int):
@@ -1122,6 +1127,7 @@ class CuaMcpGlowProxy:
                             "target_id": tid,
                             "pid": pid,
                             "window_id": wid,
+                            "window_index": win_idx,
                             "title": t.get("title") or "",
                             "url": t.get("url") or "",
                             "active": t.get("active"),
@@ -1138,6 +1144,7 @@ class CuaMcpGlowProxy:
             synced_count = self._sync_chrome_tab_rules(collected_tabs)
             return {
                 "tabs": collected_tabs,
+                "window_count": len(windows),
                 "synced_rules_count": synced_count,
                 "updated_at": now_str,
                 "error": "" if collected_tabs else last_error,
@@ -1201,9 +1208,111 @@ class CuaMcpGlowProxy:
             },
         ]
 
+    def _fetch_single_favicon_data_uri(self, scheme: str, netloc: str, hostname: str) -> str:
+        """抓取指定網域的網站圖示並轉為 data: URI（無 CSP 阻擋且支援記憶體快取）。"""
+        is_local = (
+            hostname in ("localhost", "127.0.0.1", "::1")
+            or hostname.endswith(".local")
+            or bool(re.match(r"^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)", hostname))
+        )
+        candidates: list[str] = []
+        if not is_local and "." in hostname:
+            candidates.append(f"https://www.google.com/s2/favicons?domain={urllib.parse.quote(hostname)}&sz=64")
+        if scheme in ("http", "https") and netloc:
+            candidates.append(f"{scheme}://{netloc}/favicon.ico")
+
+        for icon_url in candidates:
+            try:
+                req = urllib.request.Request(
+                    icon_url,
+                    headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+                )
+                timeout_sec = 0.7 if is_local else 1.4
+                with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
+                    if resp.status != 200:
+                        continue
+                    raw = resp.read(65537)
+                    if not raw or len(raw) > 65536:
+                        continue
+                    ctype = (resp.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+                    if not ctype.startswith("image/"):
+                        if raw.startswith(b"\x89PNG"):
+                            ctype = "image/png"
+                        elif raw.startswith(b"\x00\x00\x01\x00"):
+                            ctype = "image/x-icon"
+                        elif b"<svg" in raw[:256].lower():
+                            ctype = "image/svg+xml"
+                        else:
+                            continue
+                    b64 = base64.b64encode(raw).decode("ascii")
+                    return f"data:{ctype};base64,{b64}"
+            except Exception:
+                continue
+        return ""
+
+    def _populate_tab_favicons(self, tabs: list[dict]) -> None:
+        """批次並行補齊各分頁的網站 favicon data URI（僅於開啟或重整側邊面板時執行）。"""
+        if not tabs:
+            return
+        now_ts = time.time()
+        to_fetch: dict[str, tuple[str, str, str]] = {}
+        tab_keys: list[str] = []
+
+        for t in tabs:
+            url = t.get("url") or ""
+            try:
+                parsed = urllib.parse.urlparse(url)
+                scheme = (parsed.scheme or "").lower()
+                netloc = parsed.netloc or ""
+                hostname = (parsed.hostname or "").lower()
+            except Exception:
+                scheme, netloc, hostname = "", "", ""
+
+            if scheme not in ("http", "https") or not hostname:
+                tab_keys.append("")
+                continue
+
+            cache_key = f"{scheme}://{netloc}" if hostname in ("localhost", "127.0.0.1", "::1") else hostname
+            tab_keys.append(cache_key)
+            with self._favicon_lock:
+                cached = self._favicon_cache.get(cache_key)
+                if cached is not None:
+                    data_uri, exp_ts = cached
+                    if now_ts < exp_ts:
+                        continue
+            if cache_key not in to_fetch:
+                to_fetch[cache_key] = (scheme, netloc, hostname)
+
+        if to_fetch:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, len(to_fetch))) as pool:
+                fut_map = {
+                    pool.submit(self._fetch_single_favicon_data_uri, s, nl, hn): key
+                    for key, (s, nl, hn) in to_fetch.items()
+                }
+                done, _ = concurrent.futures.wait(fut_map.keys(), timeout=2.2)
+                with self._favicon_lock:
+                    if len(self._favicon_cache) > 256:
+                        self._favicon_cache.clear()
+                    for fut in done:
+                        key = fut_map[fut]
+                        try:
+                            uri = fut.result() or ""
+                        except Exception:
+                            uri = ""
+                        ttl = 3600.0 if uri else 180.0
+                        self._favicon_cache[key] = (uri, now_ts + ttl)
+
+        with self._favicon_lock:
+            for t, key in zip(tabs, tab_keys):
+                if key and key in self._favicon_cache:
+                    uri = self._favicon_cache[key][0]
+                    if uri:
+                        t["favicon"] = uri
+
     def _handle_virtual_tool_call(self, req_id: object, tool_name: str) -> None:
         payload = self._sync_all_chrome_tabs()
         tabs = payload.get("tabs") or []
+        self._populate_tab_favicons(tabs)
         if tabs:
             lines = [f"已同步 {len(tabs)} 個開啟中的 Chrome 分頁（皆可於聊天框以 @chrome-tab 選取）："]
             for i, t in enumerate(tabs, start=1):
@@ -1240,7 +1349,17 @@ class CuaMcpGlowProxy:
                             "name": "Chrome Tabs Picker",
                             "description": "Interactive Chrome tab picker side panel with one-click Attach to prompt.",
                             "mimeType": "text/html;profile=mcp-app",
-                            "_meta": {"ui": {"prefersBorder": False}},
+                            "_meta": {
+                                "ui": {
+                                    "prefersBorder": False,
+                                    "csp": {
+                                        "resourceDomains": [
+                                            "https://www.google.com",
+                                            "https://*.gstatic.com",
+                                        ]
+                                    },
+                                }
+                            },
                         }
                     ]
                 },

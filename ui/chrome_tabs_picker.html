@@ -1,204 +1,643 @@
-<!-- 檔案用途：Computer Use 插件側邊欄 MCP App (Chrome Tabs Picker) 單檔介面 -->
+<!-- 檔案用途：Computer Use 插件側邊欄 MCP App (Chrome Tabs Picker) — Geist 極簡黑白灰與真實網站圖示介面 -->
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-Hant" data-theme="dark">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Chrome Tabs Picker</title>
+<title>Chrome Tabs</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--color-background-primary, #111318);
-    color: var(--color-text-primary, #e6edf3);
-    font-family: var(--font-sans, "Segoe UI", system-ui, -apple-system, sans-serif);
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  :root,
+  [data-theme="dark"],
+  .dark {
+    --p-canvas: var(--color-background-primary, #0b0b0c);
+    --p-bar: rgba(255, 255, 255, 0.018);
+    --p-well: rgba(255, 255, 255, 0.036);
+    --p-well-focus: rgba(255, 255, 255, 0.015);
+    --p-hover: rgba(255, 255, 255, 0.045);
+    --p-focus-row: rgba(255, 255, 255, 0.035);
+    --p-sel-bg: rgba(255, 255, 255, 0.075);
+    --p-sel-hover: rgba(255, 255, 255, 0.105);
+    --p-border: rgba(255, 255, 255, 0.075);
+    --p-border-subtle: rgba(255, 255, 255, 0.05);
+    --p-border-strong: rgba(255, 255, 255, 0.24);
+    --p-ink-1: #f4f4f5;
+    --p-ink-2: #a1a1aa;
+    --p-ink-3: #63636b;
+    --p-accent: #f4f4f5;
+    --p-accent-fg: #09090b;
+    --p-live: #d4d4d8;
+    --p-tile: rgba(255, 255, 255, 0.048);
+    --p-tile-ring: oklch(1 0 0 / 0.09);
+    --p-btn-hover: rgba(255, 255, 255, 0.075);
+  }
+
+  [data-theme="light"],
+  .light {
+    --p-canvas: var(--color-background-primary, #fbfbfc);
+    --p-bar: rgba(0, 0, 0, 0.018);
+    --p-well: rgba(0, 0, 0, 0.035);
+    --p-well-focus: rgba(255, 255, 255, 0.85);
+    --p-hover: rgba(0, 0, 0, 0.038);
+    --p-focus-row: rgba(0, 0, 0, 0.028);
+    --p-sel-bg: rgba(0, 0, 0, 0.062);
+    --p-sel-hover: rgba(0, 0, 0, 0.088);
+    --p-border: rgba(0, 0, 0, 0.078);
+    --p-border-subtle: rgba(0, 0, 0, 0.05);
+    --p-border-strong: rgba(0, 0, 0, 0.28);
+    --p-ink-1: #111113;
+    --p-ink-2: #636369;
+    --p-ink-3: #94949c;
+    --p-accent: #18181b;
+    --p-accent-fg: #fafafa;
+    --p-live: #52525b;
+    --p-tile: rgba(0, 0, 0, 0.036);
+    --p-tile-ring: oklch(0 0 0 / 0.085);
+    --p-btn-hover: rgba(0, 0, 0, 0.065);
+  }
+
+  html, body {
+    height: 100%;
+    min-height: 280px;
+    background: var(--p-canvas);
+    color: var(--p-ink-1);
+    font-family: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif);
     font-size: 13px;
-    line-height: 1.45;
-    padding: 12px;
-  }
-  .toolbar {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 8px;
-  }
-  .search-input {
-    flex: 1;
-    background: var(--color-background-secondary, #1b1f27);
-    color: var(--color-text-primary, #e6edf3);
-    border: 1px solid var(--color-border-primary, #2d333b);
-    border-radius: 8px;
-    padding: 7px 10px;
-    font-size: 12.5px;
-    outline: none;
-  }
-  .search-input:focus {
-    border-color: var(--color-ring-info, #4ccce0);
-  }
-  .btn {
-    cursor: pointer;
-    border-radius: 7px;
-    border: 1px solid var(--color-border-primary, #2d333b);
-    background: var(--color-background-secondary, #1b1f27);
-    color: var(--color-text-primary, #e6edf3);
-    padding: 6px 10px;
-    font-size: 12px;
-    font-weight: 500;
-    transition: opacity 0.15s, border-color 0.15s, background 0.15s;
-    white-space: nowrap;
-  }
-  .btn:hover:not(:disabled) {
-    border-color: #4ccce0;
-  }
-  .btn:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-  .btn-primary {
-    background: rgba(76, 204, 224, 0.14);
-    border-color: rgba(76, 204, 224, 0.45);
-    color: #4ccce0;
-  }
-  .btn-primary:hover {
-    background: rgba(76, 204, 224, 0.24);
-  }
-  .btn-attached {
-    background: rgba(96, 218, 174, 0.18);
-    border-color: rgba(96, 218, 174, 0.6);
-    color: #60daae;
-  }
-  .status-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    font-size: 11.5px;
-    color: var(--color-text-secondary, #8b949e);
-    margin-bottom: 10px;
-  }
-  .attached-banner {
-    display: none;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    background: rgba(76, 204, 224, 0.12);
-    border: 1px solid rgba(76, 204, 224, 0.45);
-    border-radius: 8px;
-    padding: 7px 10px;
-    margin-bottom: 10px;
-    font-size: 12px;
-  }
-  .attached-banner-text {
+    line-height: 1.4;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    user-select: none;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
-  .attached-banner strong {
-    color: #4ccce0;
-  }
-  .tab-list {
+
+  body {
     display: flex;
     flex-direction: column;
-    gap: 8px;
   }
-  .tab-card {
-    background: var(--color-background-secondary, #1b1f27);
-    border: 1px solid var(--color-border-primary, #2d333b);
-    border-radius: 10px;
-    padding: 10px 12px;
-    transition: border-color 0.15s;
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
   }
-  .tab-card.selected {
-    border-color: #4ccce0;
-    box-shadow: 0 0 0 1px rgba(76, 204, 224, 0.3);
+
+  /* Top Omnibox Header */
+  .top-header {
+    padding: 10px 10px 6px 10px;
+    flex-shrink: 0;
   }
-  .tab-header {
+
+  .omnibox {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-bottom: 4px;
+    height: 32px;
+    padding: 0 8px 0 10px;
+    gap: 7px;
+    border-radius: 6px;
+    background: var(--p-well);
+    box-shadow: inset 0 0 0 1px var(--p-border);
+    transition-property: background-color, box-shadow;
+    transition-duration: 140ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
   }
-  .badge {
+
+  .omnibox:focus-within {
+    background: var(--p-well-focus);
+    box-shadow: inset 0 0 0 1px var(--p-border-strong);
+  }
+
+  .omnibox-icon {
+    color: var(--p-ink-3);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+  }
+
+  .search-input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--p-ink-1);
+    font-family: inherit;
+    font-size: 12.5px;
+    line-height: 1;
+  }
+
+  .search-input::placeholder {
+    color: var(--p-ink-3);
+  }
+
+  .count-pill {
+    font-size: 11px;
+    color: var(--p-ink-3);
+    padding: 0 2px;
+    flex-shrink: 0;
+  }
+
+  .kbd-hint {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 10.5px;
-    padding: 1px 6px;
-    border-radius: 999px;
-    font-weight: 600;
+    line-height: 1;
+    color: var(--p-ink-3);
+    background: var(--p-tile);
+    box-shadow: inset 0 0 0 1px var(--p-border-subtle);
+    padding: 3px 5px;
+    border-radius: 4px;
+    flex-shrink: 0;
   }
-  .badge.active {
-    background: rgba(96, 218, 174, 0.16);
-    color: #60daae;
+
+  .icon-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--p-ink-2);
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition-property: transform, background-color, color, opacity;
+    transition-duration: 130ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
   }
-  .badge.bg {
-    background: var(--color-background-tertiary, #252b36);
-    color: var(--color-text-secondary, #8b949e);
+
+  .icon-btn:hover:not(:disabled) {
+    background: var(--p-btn-hover);
+    color: var(--p-ink-1);
   }
-  .tab-domain {
-    font-size: 11px;
-    color: var(--color-text-secondary, #8b949e);
+
+  .icon-btn:active:not(:disabled) {
+    transform: scale(0.96);
+  }
+
+  .icon-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  @keyframes spinRefresh {
+    to { transform: rotate(360deg); }
+  }
+
+  .icon-btn.is-loading svg {
+    animation: spinRefresh 680ms linear infinite;
+  }
+
+  /* Scrollable Flush Tab List */
+  .list-scroll {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 4px 6px 8px 6px;
+  }
+
+  .list-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .list-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .list-scroll::-webkit-scrollbar-thumb {
+    background: var(--p-border);
+    border-radius: 99px;
+  }
+
+  .window-group-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 8px 4px 8px;
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--p-ink-3);
+  }
+
+  .window-group-label:first-child {
+    padding-top: 2px;
+  }
+
+  .tab-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 8px 7px 10px;
+    margin-bottom: 1px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition-property: background-color, opacity;
+    transition-duration: 120ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .tab-row:hover {
+    background: var(--p-hover);
+  }
+
+  .tab-row.is-kb-focused:not(.is-selected) {
+    background: var(--p-focus-row);
+    box-shadow: inset 0 0 0 1px var(--p-border);
+  }
+
+  .tab-row.is-selected {
+    background: var(--p-sel-bg);
+  }
+
+  .tab-row.is-selected:hover {
+    background: var(--p-sel-hover);
+  }
+
+  .row-accent-bar {
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    border-radius: 99px;
+    background: var(--p-accent);
+    opacity: 0;
+    transform: scaleY(0.35);
+    transition-property: opacity, transform;
+    transition-duration: 150ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .tab-row.is-selected .row-accent-bar {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+
+  /* Website Logo / Favicon Tile */
+  .site-icon-wrap {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+  }
+
+  .site-icon-tile {
+    width: 24px;
+    height: 24px;
+    border-radius: 5px;
+    background: var(--p-tile);
+    box-shadow: inset 0 0 0 1px var(--p-tile-ring);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--p-ink-2);
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
+
+  .site-favicon {
+    width: 15px;
+    height: 15px;
+    object-fit: contain;
+    display: block;
+    border-radius: 2px;
+  }
+
+  [data-theme="dark"] .site-favicon.invert-on-dark,
+  .dark .site-favicon.invert-on-dark {
+    filter: invert(1) brightness(1.06);
+  }
+
+  .active-dot {
+    position: absolute;
+    right: -1.5px;
+    bottom: -1.5px;
+    width: 6px;
+    height: 6px;
+    border-radius: 99px;
+    background: var(--p-live);
+    box-shadow: 0 0 0 2px var(--p-canvas);
+  }
+
+  /* Two-tier Text Hierarchy */
+  .tab-main {
+    flex: 1;
+    min-width: 0;
+  }
+
   .tab-title {
-    font-weight: 600;
-    font-size: 13px;
-    margin-bottom: 2px;
+    font-size: 12.5px;
+    font-weight: 450;
+    color: var(--p-ink-1);
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+    line-height: 1.32;
   }
-  .tab-url {
+
+  .tab-row.is-selected .tab-title {
+    font-weight: 550;
+  }
+
+  .tab-sub {
     font-size: 11px;
-    color: var(--color-text-tertiary, #6e7681);
+    color: var(--p-ink-2);
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
-    margin-bottom: 8px;
+    line-height: 1.28;
+    margin-top: 1px;
   }
-  .tab-footer {
+
+  .tab-sub-path {
+    color: var(--p-ink-3);
+  }
+
+  /* Subtle Right Row Controls */
+  .row-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .copy-btn {
+    position: relative;
+    width: 22px;
+    height: 22px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .tab-row:hover .copy-btn,
+  .tab-row.is-kb-focused .copy-btn,
+  .copy-btn.is-copied {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .copy-btn .ic-at,
+  .copy-btn .ic-ok {
+    position: absolute;
+    transition-property: opacity, transform, filter;
+    transition-duration: 180ms;
+    transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .copy-btn .ic-at {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
+
+  .copy-btn .ic-ok {
+    opacity: 0;
+    transform: scale(0.25);
+    filter: blur(4px);
+    color: var(--p-ink-1);
+  }
+
+  .copy-btn.is-copied .ic-at {
+    opacity: 0;
+    transform: scale(0.25);
+    filter: blur(4px);
+  }
+
+  .copy-btn.is-copied .ic-ok {
+    opacity: 1;
+    transform: scale(1);
+    filter: blur(0px);
+  }
+
+  .check-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition-property: transform;
+    transition-duration: 120ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .check-btn:active {
+    transform: scale(0.96);
+  }
+
+  .check-ring {
+    width: 15px;
+    height: 15px;
+    border-radius: 99px;
+    border: 1px solid var(--p-border-strong);
+    opacity: 0;
+    transition-property: opacity, border-color;
+    transition-duration: 120ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .tab-row:hover .check-ring,
+  .tab-row.is-kb-focused .check-ring {
+    opacity: 0.85;
+  }
+
+  .check-filled {
+    width: 16px;
+    height: 16px;
+    border-radius: 99px;
+    background: var(--p-accent);
+    color: var(--p-accent-fg);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Empty / Offline / Loading State */
+  .state-view {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 36px 20px;
+    min-height: 210px;
+  }
+
+  .state-icon-box {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: var(--p-tile);
+    box-shadow: inset 0 0 0 1px var(--p-tile-ring);
+    color: var(--p-ink-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+  }
+
+  .state-title {
+    font-size: 12.5px;
+    font-weight: 550;
+    color: var(--p-ink-1);
+    margin-bottom: 4px;
+    text-wrap: balance;
+  }
+
+  .state-desc {
+    font-size: 11.5px;
+    color: var(--p-ink-2);
+    line-height: 1.5;
+    max-width: 260px;
+    text-wrap: pretty;
+  }
+
+  .state-desc code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10.5px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--p-tile);
+    color: var(--p-ink-1);
+    box-shadow: inset 0 0 0 1px var(--p-border-subtle);
+  }
+
+  .solid-btn {
+    margin-top: 14px;
+    appearance: none;
+    border: none;
+    height: 28px;
+    padding: 0 12px;
+    border-radius: 6px;
+    background: var(--p-accent);
+    color: var(--p-accent-fg);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition-property: transform, opacity;
+    transition-duration: 120ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
+  }
+
+  .solid-btn:hover {
+    opacity: 0.9;
+  }
+
+  .solid-btn:active {
+    transform: scale(0.96);
+  }
+
+  /* Quiet Context Footer */
+  .bottom-footer {
+    height: 33px;
+    padding: 0 12px;
+    border-top: 1px solid var(--p-border);
+    background: var(--p-bar);
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    flex-shrink: 0;
+    font-size: 11.5px;
   }
-  .mention-tag {
-    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-    font-size: 11px;
-    color: var(--color-text-secondary, #8b949e);
-    background: var(--color-background-tertiary, #252b36);
-    padding: 2px 6px;
-    border-radius: 5px;
+
+  .footer-left {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    color: var(--p-ink-2);
+  }
+
+  .footer-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 99px;
+    background: var(--p-accent);
+    flex-shrink: 0;
+  }
+
+  .footer-text {
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 55%;
   }
-  .hint-text {
-    font-size: 11px;
-    color: var(--color-text-secondary, #8b949e);
+
+  .footer-text.is-bound {
+    color: var(--p-ink-1);
+    font-weight: 500;
   }
-  .empty-state {
-    text-align: center;
-    padding: 28px 14px;
-    color: var(--color-text-secondary, #8b949e);
-    border: 1px dashed var(--color-border-primary, #2d333b);
-    border-radius: 10px;
+
+  .text-btn {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--p-ink-2);
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 500;
+    padding: 3px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition-property: transform, background-color, color;
+    transition-duration: 120ms;
+    transition-timing-function: cubic-bezier(0.23, 1, 0.32, 1);
   }
-  .empty-state.error {
-    color: var(--color-text-danger, #f85149);
+
+  .text-btn:hover {
+    background: var(--p-btn-hover);
+    color: var(--p-ink-1);
+  }
+
+  .text-btn:active {
+    transform: scale(0.96);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 </style>
 </head>
 <body>
-  <div class="toolbar">
-    <input id="search-input" class="search-input" type="text" placeholder="搜尋 Chrome 分頁標題或網址..." />
-    <button id="refresh-btn" class="btn">↻ 重新整理</button>
-  </div>
-  <div class="status-bar">
-    <span id="status-text">正在初始化...</span>
-  </div>
-  <div id="attached-banner" class="attached-banner">
-    <span class="attached-banner-text">已指定分頁： <strong id="attached-title"></strong></span>
-    <button id="clear-attach-btn" class="btn">取消</button>
-  </div>
-  <div id="tab-list" class="tab-list"></div>
+  <header class="top-header">
+    <div class="omnibox">
+      <span class="omnibox-icon" aria-hidden="true">
+        <svg width="13.5" height="13.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      </span>
+      <input id="search-input" class="search-input" type="text" autocomplete="off" spellcheck="false" placeholder="搜尋分頁標題或網域..." />
+      <span id="count-pill" class="count-pill tabular"></span>
+      <kbd id="kbd-hint" class="kbd-hint">/</kbd>
+      <button id="clear-query-btn" class="icon-btn" type="button" title="清除搜尋 (Esc)" style="display:none">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <button id="refresh-btn" class="icon-btn" type="button" title="重新整理 Chrome 分頁">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main id="tab-list" class="list-scroll" role="listbox" aria-multiselectable="true"></main>
+
+  <footer class="bottom-footer">
+    <div id="footer-status" class="footer-left">
+      <span class="footer-text">正在同步 Chrome 分頁...</span>
+    </div>
+    <button id="clear-attach-btn" class="text-btn" type="button" style="display:none">清除</button>
+  </footer>
   <script>(()=>{var xk=Object.defineProperty;var x=(e,t,n)=>()=>{if(n)throw n[0];try{return e&&(t=e(e=0)),t}catch(o){throw n=[o],o}};var Rk=(e,t)=>()=>{try{return t||e((t={exports:{}}).exports,t),t.exports}catch(n){throw t=0,n}},Qt=(e,t)=>{for(var n in t)xk(e,n,{get:t[n],enumerable:!0})};var Pk,ml,Tk,Ek,Ck,Ok,E_,C_,Nk,O_,N_=x(()=>{Pk=Object.create,ml=Object.defineProperty,Tk=Object.getOwnPropertyDescriptor,Ek=Object.getOwnPropertyNames,Ck=Object.getPrototypeOf,Ok=Object.prototype.hasOwnProperty,E_=(e,t)=>()=>(t||e((t={exports:{}}).exports,t),t.exports),C_=(e,t)=>{let n={};for(var o in e)ml(n,o,{get:e[o],enumerable:!0});return t&&ml(n,Symbol.toStringTag,{value:"Module"}),n},Nk=(e,t,n,o)=>{if(t&&typeof t=="object"||typeof t=="function")for(var r=Ek(t),i=0,a=r.length,s;i<a;i++)s=r[i],!Ok.call(e,s)&&s!==n&&ml(e,s,{get:(c=>t[c]).bind(null,s),enumerable:!(o=Tk(t,s))||o.enumerable});return e},O_=(e,t,n)=>(n=e!=null?Pk(Ck(e)):{},Nk(t||!e||!e.__esModule?ml(n,"default",{value:e,enumerable:!0}):n,e))});function A_(e){return typeof e=="string"&&j_.has(e.replace(/#$/,""))}function U_(e,t){if(!("$schema"in e)||typeof e.$schema!="string")return"2020-12";let n=e.$schema.replace(/#$/,"");if(jk.has(n))return"2020-12";if(j_.has(n))return"2019-09";if(Ak.has(n)||Uk.has(n))return"draft-7";throw new Error(`JSON Schema declares an unsupported dialect ("$schema": "${e.$schema.slice(0,200)}"). The default validator supports JSON Schema 2020-12, 2019-09, draft-07, and draft-06; ${t}`)}var jk,j_,Ak,Uk,dm=x(()=>{jk=new Set(["https://json-schema.org/draft/2020-12/schema","http://json-schema.org/draft/2020-12/schema"]),j_=new Set(["https://json-schema.org/draft/2019-09/schema","http://json-schema.org/draft/2019-09/schema"]),Ak=new Set(["https://json-schema.org/draft-07/schema","http://json-schema.org/draft-07/schema"]),Uk=new Set(["https://json-schema.org/draft-06/schema","http://json-schema.org/draft-06/schema"])});var z={};Qt(z,{BIGINT_FORMAT_RANGES:()=>Yo,CONSTANT_CATCH:()=>gl,Class:()=>fm,NUMBER_FORMAT_RANGES:()=>Wo,aborted:()=>Fe,allowsEval:()=>vm,assert:()=>Vk,assertEqual:()=>Dk,assertIs:()=>Lk,assertNever:()=>qk,assertNotEqual:()=>Mk,assignProp:()=>Pe,attachSchema:()=>Xo,base64ToUint8Array:()=>V_,base64urlToUint8Array:()=>sI,cached:()=>ei,captureStackTrace:()=>fl,cleanEnum:()=>aI,cleanRegex:()=>tr,clone:()=>ue,cloneDef:()=>Hk,codePointLength:()=>sn,constantCatch:()=>$m,createTransparentProxy:()=>Yk,defineLazy:()=>hm,defineLazyInternal:()=>oe,derived:()=>dI,esc:()=>Ze,escapeRegex:()=>_t,explicitlyAborted:()=>bm,extend:()=>eI,finalizeIssue:()=>Qe,floatSafeRemainder:()=>Bo,getElementAtPath:()=>Jk,getEnumValues:()=>Xn,getLengthableOrigin:()=>ea,getParsedType:()=>Wk,getSizableOrigin:()=>Qo,hexToUint8Array:()=>lI,hide:()=>ta,installLazyProp:()=>hI,isObject:()=>an,isPlainObject:()=>vt,issue:()=>ni,joinValues:()=>b,jsonStringifyReplacer:()=>Qn,members:()=>ym,merge:()=>rI,mergeDefs:()=>zt,normalizeParams:()=>T,nullish:()=>pl,numKeys:()=>Gk,objectClone:()=>Zk,omit:()=>Qk,optionalKeys:()=>Sm,own:()=>yr,parsedType:()=>I,partial:()=>nI,pick:()=>Xk,prefixIssues:()=>Xe,primitiveTypes:()=>_m,promiseAllObject:()=>Bk,propertyKeyTypes:()=>Go,randomString:()=>Kk,rawShape:()=>ti,required:()=>iI,safeExtend:()=>tI,shallowClone:()=>Ko,sizeCaps:()=>ri,slugify:()=>gm,stringifyPrimitive:()=>w,toZod:()=>Jo,uint8ArrayToBase64:()=>Z_,uint8ArrayToBase64url:()=>cI,uint8ArrayToHex:()=>uI,unwrapMessage:()=>Yn});function Dk(e){return e}function Mk(e){return e}function Jo(){return e=>e}function Lk(e){}function qk(e){throw new Error("Unexpected value in exhaustive check")}function Vk(e){}function Xn(e){let t=Object.values(e).filter(o=>typeof o=="number");return Object.entries(e).filter(([o,r])=>t.indexOf(+o)===-1).map(([o,r])=>r)}function b(e,t="|"){return e.map(n=>w(n)).join(t)}function Qn(e,t){return typeof t=="bigint"?t.toString():t}function ei(e){return new pm(e)}function pl(e){return e==null}function tr(e){let t=e.startsWith("^")?1:0,n=e.endsWith("$")?e.length-1:e.length;return e.slice(t,n)}function Bo(e,t){let n=e/t,o=Math.round(n),r=4*Number.EPSILON*Math.max(Math.abs(n),1);return Math.abs(n-o)<r?0:n-o}function hm(e,t,n){let o;Object.defineProperty(e,t,{get(){if(o!==D_)return o===void 0&&(o=D_,o=n()),o},set(r){Object.defineProperty(e,t,{value:r})},configurable:!0})}function Zk(e){return Object.create(Object.getPrototypeOf(e),Object.getOwnPropertyDescriptors(e))}function Pe(e,t,n){Object.defineProperty(e,t,{value:n,writable:!0,enumerable:!0,configurable:!0})}function ti(e){let t=Object.getOwnPropertyDescriptor(e,"shape");return t?.get?t.get.raw:t?.value}function er(e){return ti(e._zod.def)??e._zod.def.shape}function M_(e,t,n){Object.defineProperty(e,t,{get(){let o=n();return Pe(this,t,o),o},enumerable:!0,configurable:!0})}function L_(e,t,n){t in e?Pe(e,t,n):e[t]=n}function on(e,t,n,o){let r=er(t);for(let i of n){let a=Object.getOwnPropertyDescriptor(r,i);a.enumerable&&(a.get?M_(e,i,()=>{let s=t._zod.def.shape[i];return o?o(s,i):s}):L_(e,i,o?o(a.value,i):a.value))}}function Fk(e,t){for(let n of Reflect.ownKeys(t)){let o=Object.getOwnPropertyDescriptor(t,n);o.enumerable&&(o.get?M_(e,n,()=>t[n]):L_(e,n,o.value))}}function zt(...e){let t={};for(let n of e){let o=Object.getOwnPropertyDescriptors(n);Object.assign(t,o)}return Object.defineProperties({},t)}function Hk(e){return zt(e._zod.def)}function Jk(e,t){return t?t.reduce((n,o)=>n?.[o],e):e}function Bk(e){let t=Object.keys(e),n=t.map(o=>e[o]);return Promise.all(n).then(o=>{let r={};for(let i=0;i<t.length;i++)r[t[i]]=o[i];return r})}function Kk(e=10){let t="abcdefghijklmnopqrstuvwxyz",n="";for(let o=0;o<e;o++)n+=t[Math.floor(Math.random()*t.length)];return n}function Ze(e){return JSON.stringify(e)}function gm(e){return e.toLowerCase().trim().replace(/[^\w\s-]/g,"").replace(/[\s_-]+/g,"-").replace(/^-+|-+$/g,"")}function an(e){return typeof e=="object"&&e!==null&&!Array.isArray(e)}function vt(e){if(an(e)===!1)return!1;let t=e.constructor;if(t===void 0||typeof t!="function")return!0;let n=t.prototype;return!(an(n)===!1||Object.prototype.hasOwnProperty.call(n,"isPrototypeOf")===!1)}function Ko(e){return vt(e)?{...e}:Array.isArray(e)?[...e]:e instanceof Map?new Map(e):e instanceof Set?new Set(e):e}function Gk(e){let t=0;for(let n in e)Object.prototype.hasOwnProperty.call(e,n)&&t++;return t}function _t(e){return e.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}function ue(e,t,n){let o=new e._zod.constr(t??e._zod.def);return(!t||n?.parent)&&(o._zod.parent=e),o}function T(e){let t=e;if(!t)return{};if(typeof t=="string")return{error:()=>t};if(t?.message!==void 0){if(t?.error!==void 0)throw new Error("Cannot specify both `message` and `error` params");t.error=t.message}return delete t.message,typeof t.error=="string"?{...t,error:()=>t.error}:t}function Yk(e){let t;return new Proxy({},{get(n,o,r){return t??(t=e()),Reflect.get(t,o,r)},set(n,o,r,i){return t??(t=e()),Reflect.set(t,o,r,i)},has(n,o){return t??(t=e()),Reflect.has(t,o)},deleteProperty(n,o){return t??(t=e()),Reflect.deleteProperty(t,o)},ownKeys(n){return t??(t=e()),Reflect.ownKeys(t)},getOwnPropertyDescriptor(n,o){return t??(t=e()),Reflect.getOwnPropertyDescriptor(t,o)},defineProperty(n,o,r){return t??(t=e()),Reflect.defineProperty(t,o,r)}})}function w(e){return typeof e=="bigint"?e.toString()+"n":typeof e=="string"?`"${e}"`:`${e}`}function Sm(e){return Object.keys(e).filter(t=>e[t]._zod.optin!==void 0&&e[t]._zod.optout==="optional")}function Xk(e,t){let n=e._zod.def,o=n.checks;if(o&&o.length>0)throw new Error(".pick() cannot be used on object schemas containing refinements");let i={};return on(i,e,hl(e,t)),ue(e,zt(n,{shape:i,checks:[]}))}function hl(e,t){let n=er(e),o=[];for(let r of Reflect.ownKeys(t)){if(!Object.getOwnPropertyDescriptor(n,r)?.enumerable)throw new Error(`Unrecognized key: "${String(r)}"`);t[r]&&o.push(r)}return o}function Qk(e,t){let n=e._zod.def,o=n.checks;if(o&&o.length>0)throw new Error(".omit() cannot be used on object schemas containing refinements");let i=new Set(hl(e,t)),a={};return on(a,e,Reflect.ownKeys(er(e)).filter(s=>!i.has(s))),ue(e,zt(n,{shape:a,checks:[]}))}function eI(e,t){if(!vt(t))throw new Error("Invalid input to extend: expected a plain object");let n=e._zod.def.checks;if(n&&n.length>0){let r=er(e);for(let i of Reflect.ownKeys(t))if(Object.getOwnPropertyDescriptor(r,i)!==void 0)throw new Error("Cannot overwrite keys on object schemas containing refinements. Use `.safeExtend()` instead.")}return ue(e,zt(e._zod.def,{shape:q_(e,t)}))}function q_(e,t){let n={};return on(n,e,Reflect.ownKeys(er(e))),Fk(n,t),n}function tI(e,t){if(!vt(t))throw new Error("Invalid input to safeExtend: expected a plain object");return ue(e,zt(e._zod.def,{shape:q_(e,t)}))}function rI(e,t){if(!t?._zod?.def)throw new Error("Invalid input to merge: expected an object schema. To merge a plain shape, use `.extend()`.");if(e._zod.def.checks?.length)throw new Error(".merge() cannot be used on object schemas containing refinements. Use .safeExtend() instead.");let n={};on(n,e,Reflect.ownKeys(er(e))),on(n,t,Reflect.ownKeys(er(t)));let o=zt(e._zod.def,{shape:n,get catchall(){return t._zod.def.catchall},checks:t._zod.def.checks??[]});return ue(e,o)}function nI(e,t,n,o="partial"){let i=t._zod.def.checks;if(i&&i.length>0)throw new Error(`.${o}() cannot be used on object schemas containing refinements`);let s=n?new Set(hl(t,n)):void 0,c={};return on(c,t,Reflect.ownKeys(er(t)),e&&((l,d)=>s&&!s.has(d)?l:new e({type:"optional",innerType:l}))),ue(t,zt(t._zod.def,{shape:c,checks:[]}))}function iI(e,t,n){let o=n?new Set(hl(t,n)):void 0,r={};return on(r,t,Reflect.ownKeys(er(t)),(i,a)=>o&&!o.has(a)?i:new e({type:"nonoptional",innerType:i})),ue(t,zt(t._zod.def,{shape:r}))}function Fe(e,t=0){if(e.aborted===!0)return!0;for(let n=t;n<e.issues.length;n++)if(e.issues[n]?.continue!==!0)return!0;return!1}function bm(e,t=0){if(e.aborted===!0)return!0;for(let n=t;n<e.issues.length;n++)if(e.issues[n]?.continue===!1)return!0;return!1}function Xe(e,t){return t.map(n=>{var o;return(o=n).path??(o.path=[]),n.path.unshift(e),n})}function Yn(e){return typeof e=="string"?e:e?.message}function ri(e){let t=[];for(let n of e??[]){let o=n._zod.def;if(!/_(length|size)$|_equals$/.test(o.check))break;let r=o.maximum??o.length??o.size;r>=0&&t.push([r,n])}return t}function Xo(e,t,n){var o;for(let r=t;r<e.length;r++)(o=e[r]).schema??(o.schema=n)}function Qe(e,t,n){var o;let r=e.inst?._zod?.traits;r?.has("$ZodType")&&(r.has("$ZodCheck")?(o=e).schema??(o.schema=e.inst):e.schema=e.inst);let i=e.schema!==e.inst?e.schema?._zod.def?.error:void 0,a=e.message?e.message:Yn(e.inst?._zod.def?.error?.(e))??Yn(i?.(e))??Yn(t?.error?.(e))??Yn(n.customError?.(e))??Yn(n.localeError?.(e))??"Invalid input",s={};for(let c of Object.keys(e))c==="inst"||c==="schema"||c==="continue"||c==="input"||c==="__proto__"||(s[c]=e[c]);return s.path??(s.path=[]),s.message=a,t?.reportInput&&(s.input=e.input),s}function Qo(e){return e instanceof Set?"set":e instanceof Map?"map":e instanceof File?"file":"unknown"}function sn(e){let t=e.length;if(!oI.test(e))return t;let n=t;for(let o=0;o<t-1;o++)(e.charCodeAt(o)&64512)===55296&&(e.charCodeAt(o+1)&64512)===56320&&(n--,o++);return n}function ea(e){return Array.isArray(e)?"array":typeof e=="string"?"string":"unknown"}function I(e){let t=typeof e;switch(t){case"number":return Number.isNaN(e)?"nan":"number";case"object":{if(e===null)return"null";if(Array.isArray(e))return"array";let n=e;if(n&&Object.getPrototypeOf(n)!==Object.prototype&&"constructor"in n&&n.constructor)return n.constructor.name}}return t}function ni(...e){let[t,n,o]=e;return typeof t=="string"?{message:t,code:"custom",input:n,inst:o}:{...t}}function aI(e){return Object.entries(e).filter(([t,n])=>Number.isNaN(Number.parseInt(t,10))).map(t=>t[1])}function V_(e){let t=atob(e),n=new Uint8Array(t.length);for(let o=0;o<t.length;o++)n[o]=t.charCodeAt(o);return n}function Z_(e){let t="";for(let n=0;n<e.length;n++)t+=String.fromCharCode(e[n]);return btoa(t)}function sI(e){let t=e.replace(/-/g,"+").replace(/_/g,"/"),n="=".repeat((4-t.length%4)%4);return V_(t+n)}function cI(e){return Z_(e).replace(/\+/g,"-").replace(/\//g,"_").replace(/=/g,"")}function lI(e){let t=e.replace(/^0x/,"");if(t.length%2!==0)throw new Error("Invalid hex string length");let n=new Uint8Array(t.length/2);for(let o=0;o<t.length;o+=2)n[o/2]=Number.parseInt(t.slice(o,o+2),16);return n}function uI(e){return Array.from(e).map(t=>t.toString(16).padStart(2,"0")).join("")}function ym(e,t){for(let n in t){let o=Object.getOwnPropertyDescriptor(t,n);o.get?Object.defineProperty(e,n,{...o,enumerable:!1}):mI(e,n,o.value)}}function yr(e,t,n,o=!0){return Object.defineProperty(e,t,{configurable:!0,writable:!0,enumerable:o,value:n}),n}function ta(e,t,n){return yr(e,t,n,!1)}function dI(e,t){for(let n in e){let o=e[n];Object.defineProperty(t,n,{configurable:!0,enumerable:!0,get(){return yr(this,n,o(this))},set(r){yr(this,n,r)}})}return t}function mI(e,t,n){Object.defineProperty(e,t,{configurable:!0,get(){return this==null?n:yr(this,t,n.bind(this))},set(o){yr(this,t,o)}})}function pI(e,t){let n=Object.getPrototypeOf(e);return t in n?void 0:n}function oe(e,t,n){let o=Object.getPrototypeOf(e._zod);if(t in o&&mm!==e._zod){mm=void 0;return}mm=e._zod,Object.defineProperty(o,t,{configurable:!0,get(){Object.defineProperty(this,t,fI);let r=br;br=!1;try{let i=n(this);return br?delete this[t]:Object.defineProperty(this,t,{configurable:!0,writable:!0,value:i}),br=br||r,i}catch(i){throw delete this[t],br=br||r,i}},set(r){Object.defineProperty(this,t,{configurable:!0,writable:!0,value:r})}})}function hI(e,t,n,o){let r=pI(e,t);r&&Object.defineProperty(r,t,{configurable:!0,get(){let i={configurable:!0,writable:!0,enumerable:o,value:void 0};return Object.defineProperty(this,t,i),i.value=n(this),Object.defineProperty(this,t,i),i.value},set(i){Object.defineProperty(this,t,{configurable:!0,writable:!0,enumerable:o,value:i})}})}function $m(e){let t=()=>e;return t[gl]=!0,t}var pm,D_,fl,vm,Wk,Go,_m,Wo,Yo,oI,fm,mm,br,fI,gl,O=x(()=>{$r();pm=class{constructor(t){this._getter=t,this._value=void 0}get value(){let t=this._getter;return t!==void 0&&(this._value=t(),this._getter=void 0),this._value}};D_=Symbol("evaluating");fl="captureStackTrace"in Error?Error.captureStackTrace:(...e)=>{};vm=ei(()=>{if(Ie.jitless||typeof navigator<"u"&&navigator?.userAgent?.includes("Cloudflare"))return!1;try{let e=Function;return new e(""),!0}catch{return!1}});Wk=e=>{let t=typeof e;switch(t){case"undefined":return"undefined";case"string":return"string";case"number":return Number.isNaN(e)?"nan":"number";case"boolean":return"boolean";case"function":return"function";case"bigint":return"bigint";case"symbol":return"symbol";case"object":return Array.isArray(e)?"array":e===null?"null":e.then&&typeof e.then=="function"&&e.catch&&typeof e.catch=="function"?"promise":typeof Map<"u"&&e instanceof Map?"map":typeof Set<"u"&&e instanceof Set?"set":typeof Date<"u"&&e instanceof Date?"date":typeof File<"u"&&e instanceof File?"file":"object";default:throw new Error(`Unknown data type: ${t}`)}},Go=new Set(["string","number","symbol"]),_m=new Set(["string","number","bigint","boolean","symbol","undefined"]);Wo={safeint:[Number.MIN_SAFE_INTEGER,Number.MAX_SAFE_INTEGER],int32:[-2147483648,2147483647],uint32:[0,4294967295],float32:[-34028234663852886e22,34028234663852886e22],float64:[-Number.MAX_VALUE,Number.MAX_VALUE]},Yo={int64:[BigInt("-9223372036854775808"),BigInt("9223372036854775807")],uint64:[BigInt(0),BigInt("18446744073709551615")]};oI=/[\uD800-\uDBFF]/;fm=class{constructor(...t){}};br=!1,fI={configurable:!0,get(){br=!0}};gl="~constantCatch"});function gI(e){let t=H_;if(t){let n=t.stackTraceLimit;if(typeof n=="number"){try{t.stackTraceLimit=0}catch{return H_=null,new e}try{return new e}finally{t.stackTraceLimit=n}}}return new e}function S(e,t,n,o){let r={};function i(f){this.def=f,this.constr=m,this.traits=new Set}i.prototype=r;let a=n,s=a&&new WeakSet;function c(f,h){if(f._zod){if(f._zod.traits.has(e))return}else{zm.value=new i(h);try{Object.defineProperty(f,"_zod",zm)}finally{zm.value=void 0}}if(f._zod.traits.add(e),t(f,h),s){let _=Object.getPrototypeOf(f),k=f._zod.constr.prototype,C=_;for(;C&&C!==k;)C=Object.getPrototypeOf(C);let P=C??_;s.has(P)||(s.add(P),ym(P,a))}let v=m.prototype;for(let _ in v)Object.prototype.hasOwnProperty.call(v,_)&&(_ in f||(f[_]=v[_].bind(f)))}let l=o?.Parent??Object;class d extends l{}Object.defineProperty(d,"name",{value:e});function m(f){let h=o?.Parent?gI(d):this;c(h,f);let v=h._zod.deferred;if(v){for(let k of v)k();h._zod.deferred=void 0}let _=globalThis.__zod_globalConfig?.postProcessor;return _&&_(h),h}return Object.defineProperty(m,"init",{value:c}),Object.defineProperty(m,Symbol.hasInstance,{value:f=>o?.Parent&&f instanceof o.Parent?!0:f?._zod?.traits?.has(e)}),Object.defineProperty(m,"name",{value:e}),m}function ye(e){return e&&Object.assign(Ie,e),Ie}var F_,ra,zm,H_,wm,et,zr,Ie,$r=x(()=>{O();ra=Object.freeze({status:"aborted"}),zm={value:void 0,enumerable:!1},H_="captureStackTrace"in Error?Error:null;wm=Symbol("zod_brand"),et=class extends Error{constructor(){super("Encountered Promise during synchronous parse. Use .parseAsync() instead.")}},zr=class extends Error{constructor(t){super(`Encountered unidirectional transform during encode: ${t}`),this.name="ZodEncodeError"}};(F_=globalThis).__zod_globalConfig??(F_.__zod_globalConfig={});Ie=globalThis.__zod_globalConfig});function vI(){let e=this._zod;return e.message??(e.message=JSON.stringify(e.def,Qn,2)),e.message}function _I(e){this._zod.message=e}function bI(e,t,n){return Object.prototype.hasOwnProperty.call(e,t)||(t==="__proto__"?Object.defineProperty(e,t,{value:n(),writable:!0,enumerable:!0,configurable:!0}):e[t]=n()),e[t]}function na(e,t=n=>n.message){let n={},o=[];for(let r of e.issues)r.path.length>0?bI(n,r.path[0],()=>[]).push(t(r)):o.push(t(r));return{formErrors:o,fieldErrors:n}}function ia(e,t=n=>n.message){let n={_errors:[]},o=(r,i=[])=>{for(let a of r.issues)if(a.code==="invalid_union"&&a.errors.length)a.errors.map(s=>o({issues:s},[...i,...a.path]));else if(a.code==="invalid_key")o({issues:a.issues},[...i,...a.path]);else if(a.code==="invalid_element")o({issues:a.issues},[...i,...a.path]);else{let s=[...i,...a.path];if(s.length===0)n._errors.push(t(a));else{let c=n,l=0;for(;l<s.length;){let d=s[l],m=l===s.length-1;if(d==="_errors"){m&&c._errors.push(t(a)),l++;continue}Object.prototype.hasOwnProperty.call(c,d)||Object.defineProperty(c,d,{value:{_errors:[]},enumerable:!0,writable:!0,configurable:!0});let f=c[d];m&&f._errors.push(t(a)),c=f,l++}}}};return o(e),n}function Rm(e,t=n=>n.message){let n={errors:[]},o=(r,i=[])=>{var a;for(let s of r.issues)if(s.code==="invalid_union"&&s.errors.length)s.errors.map(c=>o({issues:c},[...i,...s.path]));else if(s.code==="invalid_key")o({issues:s.issues},[...i,...s.path]);else if(s.code==="invalid_element")o({issues:s.issues},[...i,...s.path]);else{let c=[...i,...s.path];if(c.length===0){n.errors.push(t(s));continue}let l=n,d=0;for(;d<c.length;){let m=c[d],f=d===c.length-1;typeof m=="string"?(l.properties??(l.properties={}),Object.prototype.hasOwnProperty.call(l.properties,m)||Object.defineProperty(l.properties,m,{value:{errors:[]},enumerable:!0,writable:!0,configurable:!0}),l=l.properties[m]):(l.items??(l.items=[]),(a=l.items)[m]??(a[m]={errors:[]}),l=l.items[m]),f&&l.errors.push(t(s)),d++}}};return o(e),n}function K_(e){let t=[],n=e.map(o=>typeof o=="object"?o.key:o);for(let o of n)typeof o=="number"?t.push(`[${o}]`):typeof o=="symbol"?t.push(`[${JSON.stringify(String(o))}]`):/[^\w$]/.test(o)?t.push(`[${JSON.stringify(o)}]`):(t.length&&t.push("."),t.push(o));return t.join("")}function Pm(e){let t=[],n=[...e.issues].sort((o,r)=>(o.path??[]).length-(r.path??[]).length);for(let o of n)t.push(`\u2716 ${o.message}`),o.path?.length&&t.push(`  \u2192 at ${K_(o.path)}`);return t.join(`
 `)}var SI,Im,J_,B_,xm,tt,Tm=x(()=>{$r();O();SI={get:vI,set:_I,enumerable:!0,configurable:!0},Im={value:void 0,enumerable:!1},J_=new WeakSet([Object.prototype,Error.prototype]),B_=(e,t)=>{e.name="$ZodError",Im.value=t,Object.defineProperty(e,"issues",Im),Im.value=void 0,Object.defineProperty(e,"message",SI);let n=Object.getPrototypeOf(e);J_.has(n)||(J_.add(n),Object.defineProperty(n,"toString",{configurable:!0,enumerable:!1,get(){let o=()=>this.message;return Object.defineProperty(this,"toString",{value:o,configurable:!0,writable:!0}),o},set(o){Object.defineProperty(this,"toString",{value:o,configurable:!0,writable:!0})}}))},xm=S("$ZodError",B_),tt=S("$ZodError",B_,void 0,{Parent:Error})});function vl(e,t){return{callee:t?.callee??e,Err:t?.Err}}function G_(e,t,n){let o;return{success:!1,get error(){return o||(o=new e(t.map(r=>Qe(r,n,ye()))),t=void 0,n=void 0),o},set error(r){o=r,t=void 0,n=void 0}}}function II(e,t,n){let o=n?{...n,async:!1,abortEarly:!0}:{async:!1,abortEarly:!0},r=e._zod.bag.fallbackRun,i;if(r?(o[kI]=!0,i=r({value:t,issues:[]},o)):i=e._zod.run({value:t,issues:[]},o),i instanceof Promise)throw new et;return i.issues.length===0}var ii,_l,oi,Sl,ai,$I,si,zI,wI,kI,oa,aa,bl,xI,yl,RI,$l,PI,zl,TI,wl,EI,kl,CI,Il,OI,xl,NI,Em=x(()=>{$r();Tm();O();ii=e=>{let t=(n,o,r,i)=>{let a=r?{...r,async:!1}:{async:!1},s=n._zod.run({value:o,issues:[]},a);if(s instanceof Promise)throw new et;if(s.issues.length){let c=new(i?.Err??e)(s.issues.map(l=>Qe(l,a,ye())));throw fl(c,i?.callee??t),c}return s.value};return t},_l=ii(tt),oi=e=>{let t=async(n,o,r,i)=>{let a=r?{...r,async:!0}:{async:!0},s=n._zod.run({value:o,issues:[]},a);if(s instanceof Promise&&(s=await s),s.issues.length){let c=new(i?.Err??e)(s.issues.map(l=>Qe(l,a,ye())));throw fl(c,i?.callee??t),c}return s.value};return t},Sl=oi(tt),ai=e=>(t,n,o)=>{let r=o?{...o,async:!1}:{async:!1},i=t._zod.run({value:n,issues:[]},r);if(i instanceof Promise)throw new et;return i.issues.length?G_(e,i.issues,r):{success:!0,data:i.value}},$I=ai(tt);si=e=>async(t,n,o)=>{let r=o?{...o,async:!0}:{async:!0},i=t._zod.run({value:n,issues:[]},r);return i instanceof Promise&&(i=await i),i.issues.length?G_(e,i.issues,r):{success:!0,data:i.value}},zI=si(tt),wI=Symbol.for("zod.compile.invalid"),kI=Symbol.for("zod.compile.fallback"),oa=((e,t,n)=>{let o=e._zod.bag.validator;if(o!==void 0){if(o(t)!==wI)return!0;if(o.definite===!0&&n===void 0)return!1}return II(e,t,n)});aa=async(e,t,n)=>{let o=n?{...n,async:!0,abortEarly:!0}:{async:!0,abortEarly:!0},r=e._zod.run({value:t,issues:[]},o);return r instanceof Promise&&(r=await r),r.issues.length===0},bl=e=>{let t=ii(e),n=(o,r,i,a)=>{let s=i?{...i,direction:"backward"}:{direction:"backward"};return t(o,r,s,vl(n,a))};return n},xI=bl(tt),yl=e=>{let t=ii(e),n=(o,r,i,a)=>t(o,r,i,vl(n,a));return n},RI=yl(tt),$l=e=>{let t=oi(e),n=async(o,r,i,a)=>{let s=i?{...i,direction:"backward"}:{direction:"backward"};return await t(o,r,s,vl(n,a))};return n},PI=$l(tt),zl=e=>{let t=oi(e),n=async(o,r,i,a)=>await t(o,r,i,vl(n,a));return n},TI=zl(tt),wl=e=>(t,n,o)=>{let r=o?{...o,direction:"backward"}:{direction:"backward"};return ai(e)(t,n,r)},EI=wl(tt),kl=e=>(t,n,o)=>ai(e)(t,n,o),CI=kl(tt),Il=e=>async(t,n,o)=>{let r=o?{...o,direction:"backward"}:{direction:"backward"};return si(e)(t,n,r)},OI=Il(tt),xl=e=>async(t,n,o)=>si(e)(t,n,o),NI=xl(tt)});var St={};Qt(St,{anyString:()=>ip,base64:()=>Gm,base64url:()=>Wm,bigint:()=>ap,boolean:()=>sp,browserEmail:()=>VI,cidrv4:()=>Bm,cidrv6:()=>Km,creditCard:()=>Rl,cuid:()=>Om,cuid2:()=>Nm,currencyCode:()=>ep,date:()=>tp,datetime:()=>np,domain:()=>Xm,duration:()=>Lm,e164:()=>Qm,email:()=>Vm,emoji:()=>Zm,extendedDuration:()=>jI,guid:()=>qm,hex:()=>mp,hostname:()=>Ym,html5Email:()=>MI,httpProtocol:()=>sa,iban:()=>Pl,idnEmail:()=>qI,integer:()=>ca,ipv4:()=>Fm,ipv6:()=>Hm,ksuid:()=>Um,lowercase:()=>up,mac:()=>Jm,md5_base64:()=>JI,md5_base64url:()=>BI,md5_hex:()=>HI,nanoid:()=>Dm,nanoidOfLength:()=>Mm,null:()=>cp,number:()=>rr,rfc5322Email:()=>LI,sha1_base64:()=>GI,sha1_base64url:()=>WI,sha1_hex:()=>KI,sha256_base64:()=>XI,sha256_base64url:()=>QI,sha256_hex:()=>YI,sha384_base64:()=>tx,sha384_base64url:()=>rx,sha384_hex:()=>ex,sha512_base64:()=>ix,sha512_base64url:()=>ox,sha512_hex:()=>nx,string:()=>op,time:()=>rp,ulid:()=>jm,undefined:()=>lp,unicodeEmail:()=>W_,uppercase:()=>dp,uuid:()=>cn,uuid4:()=>AI,uuid6:()=>UI,uuid7:()=>DI,xid:()=>Am});function Mm(e){return new RegExp(`^[a-zA-Z0-9_-]{${e}}$`)}function Zm(){return new RegExp(ZI,"u")}function FI(e){return new RegExp(`^${e}$`)}function Cm(e){let t="(?:[01]\\d|2[0-3]):[0-5]\\d";return typeof e.precision=="number"?e.precision===-1?`${t}`:e.precision===0?`${t}:[0-5]\\d`:`${t}:[0-5]\\d\\.\\d{${e.precision}}`:e.seconds?`${t}:[0-5]\\d(?:\\.\\d+)?`:`${t}(?::[0-5]\\d(?:\\.\\d+)?)?`}function rp(e){return new RegExp(`^${Cm(e)}$`)}function np(e){let t=["Z"];e.offset&&t.push("([+-](?:[01]\\d|2[0-3]):[0-5]\\d)");let n=`${Cm({precision:e.precision,seconds:!0})}(?:${t.join("|")})`,o=e.local?`${n}|${Cm({precision:e.precision})}`:n;return new RegExp(`^${Y_}T(?:${o})$`)}function la(e,t){return new RegExp(`^[A-Za-z0-9+/]{${e}}${t}$`)}function ua(e){return new RegExp(`^[A-Za-z0-9_-]{${e}}$`)}var Om,Nm,jm,Am,Um,Dm,Lm,jI,qm,cn,AI,UI,DI,Vm,MI,LI,W_,qI,VI,ZI,Fm,Hm,Jm,Bm,Km,Gm,Wm,Ym,Xm,sa,Qm,Rl,ep,Pl,Y_,tp,ip,op,ap,ca,rr,sp,cp,lp,up,dp,mp,HI,JI,BI,KI,GI,WI,YI,XI,QI,ex,tx,rx,nx,ix,ox,ln=x(()=>{O();Om=/^[cC][0-9a-z]{6,}$/,Nm=/^[0-9a-z]+$/,jm=/^[0-7][0-9A-HJKMNP-TV-Za-hjkmnp-tv-z]{25}$/,Am=/^[0-9a-vA-V]{20}$/,Um=/^[A-Za-z0-9]{27}$/,Dm=/^[a-zA-Z0-9_-]{21}$/;Lm=/^P(?:(\d+W)|(?!.*W)(?=\d|T\d)(\d+Y)?(\d+M)?(\d+D)?(T(?=\d)(\d+H)?(\d+M)?(\d+([.,]\d+)?S)?)?)$/,jI=/^[-+]?P(?!$)(?:(?:[-+]?\d+Y)|(?:[-+]?\d+[.,]\d+Y$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:(?:[-+]?\d+W)|(?:[-+]?\d+[.,]\d+W$))?(?:(?:[-+]?\d+D)|(?:[-+]?\d+[.,]\d+D$))?(?:T(?=[\d+-])(?:(?:[-+]?\d+H)|(?:[-+]?\d+[.,]\d+H$))?(?:(?:[-+]?\d+M)|(?:[-+]?\d+[.,]\d+M$))?(?:[-+]?\d+(?:[.,]\d+)?S)?)??$/,qm=/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/,cn=e=>e?new RegExp(`^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-${e}[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})$`):/^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/,AI=cn(4),UI=cn(6),DI=cn(7),Vm=/^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$/,MI=/^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/,LI=/^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/,W_=/^[^\s@"]{1,64}@[^\s@]{1,255}$/u,qI=W_,VI=/^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/,ZI="^(?=[\\s\\S]*[\\p{Extended_Pictographic}\\p{Regional_Indicator}\\u20E3])[\\p{Extended_Pictographic}\\p{Emoji_Component}]+$";Fm=/^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$/,Hm=/^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$/,Jm=e=>{let t=_t(e??":");return new RegExp(`^(?:[0-9A-F]{2}${t}){5}[0-9A-F]{2}$|^(?:[0-9a-f]{2}${t}){5}[0-9a-f]{2}$`)},Bm=/^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\/([0-9]|[1-2][0-9]|3[0-2])$/,Km=/^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))\/(12[0-8]|1[01][0-9]|[1-9]?[0-9])$/,Gm=/^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$/,Wm=/^(?:[A-Za-z0-9_-]{4})*(?:[A-Za-z0-9_-]{2,3})?$/,Ym=/^(?=.{1,253}\.?$)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[-0-9a-zA-Z]{0,61}[0-9a-zA-Z])?)*\.?$/,Xm=/^(?=.{1,253}$)([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$/,sa=/^https?$/,Qm=/^\+[1-9]\d{6,14}$/,Rl=/^\d(?:[ -]?\d){11,18}$/,ep=/^(?:AED|AFN|ALL|AMD|AOA|ARS|AUD|AWG|AZN|BAM|BBD|BDT|BHD|BIF|BMD|BND|BOB|BOV|BRL|BSD|BTN|BWP|BYN|BZD|CAD|CDF|CHE|CHF|CHW|CLF|CLP|CNY|COP|COU|CRC|CUP|CVE|CZK|DJF|DKK|DOP|DZD|EGP|ERN|ETB|EUR|FJD|FKP|GBP|GEL|GHS|GIP|GMD|GNF|GTQ|GYD|HKD|HNL|HTG|HUF|IDR|ILS|INR|IQD|IRR|ISK|JMD|JOD|JPY|KES|KGS|KHR|KMF|KPW|KRW|KWD|KYD|KZT|LAK|LBP|LKR|LRD|LSL|LYD|MAD|MDL|MGA|MKD|MMK|MNT|MOP|MRU|MUR|MVR|MWK|MXN|MXV|MYR|MZN|NAD|NGN|NIO|NOK|NPR|NZD|OMR|PAB|PEN|PGK|PHP|PKR|PLN|PYG|QAR|RON|RSD|RUB|RWF|SAR|SBD|SCR|SDG|SEK|SGD|SHP|SLE|SOS|SRD|SSP|STN|SVC|SYP|SZL|THB|TJS|TMT|TND|TOP|TRY|TTD|TWD|TZS|UAH|UGX|USD|USN|UYI|UYU|UYW|UZS|VED|VES|VND|VUV|WST|XAD|XAF|XAG|XAU|XBA|XBB|XBC|XBD|XCD|XCG|XDR|XOF|XPD|XPF|XPT|XSU|XTS|XUA|XXX|YER|ZAR|ZMW|ZWG)$/,Pl=/^[A-Z]{2}(?!00|01|99)\d{2}[A-Z0-9]{11,30}$/,Y_="(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))";tp=FI(Y_);ip=/^[\s\S]{0,}$/,op=e=>{let t=e?`[\\s\\S]{${e?.minimum??0},${e?.maximum??""}}`:"[\\s\\S]*";return new RegExp(`^${t}$`)},ap=/^-?\d+n?$/,ca=/^-?\d+$/,rr=/^-?\d+(?:\.\d+)?$/,sp=/^(?:true|false)$/i,cp=/^null$/i,lp=/^undefined$/i,up=/^[^A-Z]*$/,dp=/^[^a-z]*$/,mp=/^[0-9a-fA-F]*$/;HI=/^[0-9a-fA-F]{32}$/,JI=la(22,"=="),BI=ua(22),KI=/^[0-9a-fA-F]{40}$/,GI=la(27,"="),WI=ua(27),YI=/^[0-9a-fA-F]{64}$/,XI=la(43,"="),QI=ua(43),ex=/^[0-9a-fA-F]{96}$/,tx=la(64,""),rx=ua(64),nx=/^[0-9a-fA-F]{128}$/,ix=la(86,"=="),ox=ua(86)});function El(e,t,n){e.issues.length&&t.issues.push(...Xe(n,e.issues))}var fe,pp,fp,Tl,Cl,Ol,hp,gp,vp,_p,Sp,bp,yp,$p,zp,ci,wp,kp,Ip,xp,Rp,Pp,Tp,Ep,Cp,Op,Nl=x(()=>{$r();ln();O();fe=S("$ZodCheck",(e,t)=>{var n;e._zod??(e._zod={}),e._zod.def=t,(n=e._zod).onattach??(n.onattach=[])}),pp=e=>{let t=e.value;return!pl(t)&&t.size!==void 0},fp=e=>{let t=e.value;return!pl(t)&&t.length!==void 0},Tl={number:"number",bigint:"bigint",object:"date"},Cl=S("$ZodCheckLessThan",(e,t)=>{fe.init(e,t);let n=Tl[typeof t.value];e._zod.check=o=>{(t.inclusive?o.value<=t.value:o.value<t.value)||o.issues.push({origin:Tl[typeof o.value]??n,code:"too_big",maximum:typeof t.value=="object"?t.value.getTime():t.value,input:o.value,inclusive:t.inclusive,inst:e,continue:!t.abort})}}),Ol=S("$ZodCheckGreaterThan",(e,t)=>{fe.init(e,t);let n=Tl[typeof t.value];e._zod.check=o=>{(t.inclusive?o.value>=t.value:o.value>t.value)||o.issues.push({origin:Tl[typeof o.value]??n,code:"too_small",minimum:typeof t.value=="object"?t.value.getTime():t.value,input:o.value,inclusive:t.inclusive,inst:e,continue:!t.abort})}}),hp=S("$ZodCheckMultipleOf",(e,t)=>{fe.init(e,t),e._zod.check=n=>{if(typeof n.value!=typeof t.value)throw new Error("Cannot mix number and bigint in multiple_of check.");(typeof n.value=="bigint"?t.value!==BigInt(0)&&n.value%t.value===BigInt(0):Bo(n.value,t.value)===0)||n.issues.push({origin:typeof n.value,code:"not_multiple_of",divisor:t.value,input:n.value,inst:e,continue:!t.abort})}}),gp=S("$ZodCheckNumberFormat",(e,t)=>{fe.init(e,t),t.format=t.format||"float64";let n=t.format?.includes("int"),o=n?"int":"number",[r,i]=Wo[t.format];e._zod.check=a=>{let s=a.value;if(n){if(!Number.isInteger(s)){a.issues.push({expected:o,format:t.format,code:"invalid_type",continue:!1,input:s,inst:e});return}if(!Number.isSafeInteger(s)){s>0?a.issues.push({input:s,code:"too_big",maximum:Number.MAX_SAFE_INTEGER,note:"Integers must be within the safe integer range.",inst:e,origin:o,inclusive:!0,continue:!t.abort}):a.issues.push({input:s,code:"too_small",minimum:Number.MIN_SAFE_INTEGER,note:"Integers must be within the safe integer range.",inst:e,origin:o,inclusive:!0,continue:!t.abort});return}}s<r&&a.issues.push({origin:"number",input:s,code:"too_small",minimum:r,inclusive:!0,inst:e,continue:!t.abort}),s>i&&a.issues.push({origin:"number",input:s,code:"too_big",maximum:i,inclusive:!0,inst:e,continue:!t.abort})}}),vp=S("$ZodCheckBigIntFormat",(e,t)=>{fe.init(e,t);let[n,o]=Yo[t.format];e._zod.check=r=>{let i=r.value;i<n&&r.issues.push({origin:"bigint",input:i,code:"too_small",minimum:n,inclusive:!0,inst:e,continue:!t.abort}),i>o&&r.issues.push({origin:"bigint",input:i,code:"too_big",maximum:o,inclusive:!0,inst:e,continue:!t.abort})}}),_p=S("$ZodCheckMaxSize",(e,t)=>{var n;fe.init(e,t),(n=e._zod.def).when??(n.when=pp),e._zod.check=o=>{let r=o.value;r.size<=t.maximum||o.issues.push({origin:Qo(r),code:"too_big",maximum:t.maximum,inclusive:!0,input:r,inst:e,continue:!t.abort})}}),Sp=S("$ZodCheckMinSize",(e,t)=>{var n;fe.init(e,t),(n=e._zod.def).when??(n.when=pp),e._zod.check=o=>{let r=o.value;r.size>=t.minimum||o.issues.push({origin:Qo(r),code:"too_small",minimum:t.minimum,inclusive:!0,input:r,inst:e,continue:!t.abort})}}),bp=S("$ZodCheckSizeEquals",(e,t)=>{var n;fe.init(e,t),(n=e._zod.def).when??(n.when=pp),e._zod.check=o=>{let r=o.value,i=r.size;if(i===t.size)return;let a=i>t.size;o.issues.push({origin:Qo(r),...a?{code:"too_big",maximum:t.size}:{code:"too_small",minimum:t.size},inclusive:!0,exact:!0,input:o.value,inst:e,continue:!t.abort})}}),yp=S("$ZodCheckMaxLength",(e,t)=>{var n;fe.init(e,t),(n=e._zod.def).when??(n.when=fp),e._zod.check=o=>{let r=o.value,i=r.length;if((typeof r=="string"&&i>t.maximum?sn(r):i)<=t.maximum)return;let s=ea(r);o.issues.push({origin:s,code:"too_big",maximum:t.maximum,inclusive:!0,input:r,inst:e,continue:!t.abort})}}),$p=S("$ZodCheckMinLength",(e,t)=>{var n;fe.init(e,t),(n=e._zod.def).when??(n.when=fp),e._zod.check=o=>{let r=o.value,i=r.length;if((typeof r=="string"&&i>=t.minimum&&i<t.minimum*2?sn(r):i)>=t.minimum)return;let s=ea(r);o.issues.push({origin:s,code:"too_small",minimum:t.minimum,inclusive:!0,input:r,inst:e,continue:!t.abort})}}),zp=S("$ZodCheckLengthEquals",(e,t)=>{var n;fe.init(e,t),(n=e._zod.def).when??(n.when=fp),e._zod.check=o=>{let r=o.value,i=r.length,a=typeof r=="string"&&i>=t.length&&i<=t.length*2?sn(r):i;if(a===t.length)return;let s=ea(r),c=a>t.length;o.issues.push({origin:s,...c?{code:"too_big",maximum:t.length}:{code:"too_small",minimum:t.length},inclusive:!0,exact:!0,input:o.value,inst:e,continue:!t.abort})}}),ci=S("$ZodCheckStringFormat",(e,t)=>{var n,o;fe.init(e,t),t.pattern?(n=e._zod).check??(n.check=r=>{t.pattern.lastIndex=0,!t.pattern.test(r.value)&&r.issues.push({origin:"string",code:"invalid_format",format:t.format,input:r.value,...t.pattern?{pattern:t.pattern.toString()}:{},inst:e,continue:!t.abort})}):(o=e._zod).check??(o.check=()=>{})}),wp=S("$ZodCheckRegex",(e,t)=>{ci.init(e,t),e._zod.check=n=>{t.pattern.lastIndex=0,!t.pattern.test(n.value)&&n.issues.push({origin:"string",code:"invalid_format",format:"regex",input:n.value,pattern:t.pattern.toString(),inst:e,continue:!t.abort})}}),kp=S("$ZodCheckLowerCase",(e,t)=>{t.pattern??(t.pattern=up),ci.init(e,t)}),Ip=S("$ZodCheckUpperCase",(e,t)=>{t.pattern??(t.pattern=dp),ci.init(e,t)}),xp=S("$ZodCheckIncludes",(e,t)=>{fe.init(e,t);let n=_t(t.includes),o=new RegExp(typeof t.position=="number"?`^.{${t.position},}${n}`:n);t.pattern=o,e._zod.check=r=>{r.value.includes(t.includes,t.position)||r.issues.push({origin:"string",code:"invalid_format",format:"includes",includes:t.includes,input:r.value,inst:e,continue:!t.abort})}}),Rp=S("$ZodCheckStartsWith",(e,t)=>{fe.init(e,t);let n=new RegExp(`^${_t(t.prefix)}.*`);t.pattern??(t.pattern=n),e._zod.check=o=>{o.value.startsWith(t.prefix)||o.issues.push({origin:"string",code:"invalid_format",format:"starts_with",prefix:t.prefix,input:o.value,inst:e,continue:!t.abort})}}),Pp=S("$ZodCheckEndsWith",(e,t)=>{fe.init(e,t);let n=new RegExp(`.*${_t(t.suffix)}$`);t.pattern??(t.pattern=n),e._zod.check=o=>{o.value.endsWith(t.suffix)||o.issues.push({origin:"string",code:"invalid_format",format:"ends_with",suffix:t.suffix,input:o.value,inst:e,continue:!t.abort})}});Tp=S("$ZodCheckProperty",(e,t)=>{fe.init(e,t),e._zod.check=n=>{let o=t.schema._zod.run({value:n.value[t.property],issues:[]},{});if(o instanceof Promise)return o.then(r=>El(r,n,t.property));El(o,n,t.property)}}),Ep=S("$ZodCheckProperties",(e,t)=>{fe.init(e,t),ta(e,Symbol.iterator,function*(){yield e});let n;e._zod.check=o=>{if(o.value==null){o.issues.push({expected:"object",code:"invalid_type",input:o.value,inst:e});return}n??(n=Reflect.ownKeys(t.shape).map(a=>[a,t.shape[a]]));let r=o.value,i;for(let[a,s]of n){let c=s._zod.run({value:r[a],issues:[]},{});c instanceof Promise?(i??(i=[]),i.push(c.then(l=>El(l,o,a)))):El(c,o,a)}if(i)return Promise.all(i).then(()=>{})}}),Cp=S("$ZodCheckMimeType",(e,t)=>{fe.init(e,t);let n=new Set(t.mime);e._zod.check=o=>{n.has(o.value.type)||o.issues.push({code:"invalid_value",values:t.mime,input:o.value.type,inst:e,continue:!t.abort})}}),Op=S("$ZodCheckOverwrite",(e,t)=>{fe.init(e,t),e._zod.check=n=>{n.value=t.tx(n.value)}})});var un,jl=x(()=>{un=class{constructor(t=[],n={}){this.content=[],this.indent=0,this.args=t,this.closed=n}indented(t){this.indent+=1;try{t(this)}finally{this.indent-=1}}write(t){if(typeof t=="function"){t(this,{execution:"sync"}),t(this,{execution:"async"});return}let o=t.split(`
 `).filter(a=>a),r=Math.min(...o.map(a=>a.length-a.trimStart().length)),i=o.map(a=>a.slice(r)).map(a=>" ".repeat(this.indent*2)+a);for(let a of i)this.content.push(a)}compile(){let t=Function,n=this?.content??[""];return new t(...Object.keys(this.closed),`return function (${this.args.join(", ")}) {
@@ -301,30 +740,605 @@ Boolean requesting whether a visible border and background is provided by the ho
 - omitted: host decides border`)}),QD=p.object({method:p.literal("ui/request-display-mode"),params:p.object({mode:Jc.describe("The display mode being requested.")})}),UO=p.object({mode:Jc.describe("The display mode that was actually set. May differ from requested if not supported.")}).passthrough(),DO=p.union([p.literal("model"),p.literal("app")]).describe("Tool visibility scope - who can access the tool."),eM=p.object({resourceUri:p.string().optional(),visibility:p.array(DO).optional().describe(`Who can access this tool. Default: ["model", "app"]
 - "model": Tool visible to and callable by the agent
 - "app": Tool callable by the app from this server only`),csp:p.never().optional(),permissions:p.never().optional()}),tM=p.object({mimeTypes:p.array(p.string()).optional().describe('Array of supported MIME types for UI resources.\nMust include `"text/html;profile=mcp-app"` for MCP Apps support.')}),rM=p.object({method:p.literal("ui/download-file"),params:p.object({contents:p.array(p.union([On,Nn])).describe("Resource contents to download \u2014 embedded (inline data) or linked (host fetches). Uses standard MCP resource types.")})}),nM=p.object({method:p.literal("ui/message"),params:p.object({role:p.literal("user").describe('Message role, currently only "user" is supported.'),content:p.array(Gt).describe("Message content blocks (text, image, etc.).")})}),iM=p.object({method:p.literal("ui/notifications/sandbox-resource-ready"),params:p.object({html:p.string().describe("HTML content to load into the inner iframe."),sandbox:p.string().optional().describe("Optional override for the inner iframe's sandbox attribute."),csp:w_.optional().describe("CSP configuration from resource metadata."),permissions:k_.optional().describe("Sandbox permissions from resource metadata.")})}),MO=p.object({method:p.literal("ui/notifications/tool-result"),params:Vr.describe("Standard MCP tool execution result.")}),Sk=p.object({toolInfo:p.object({id:xt.optional().describe("JSON-RPC id of the tools/call request."),tool:qr.describe("Tool definition including name, inputSchema, etc.")}).optional().describe("Metadata of the tool call that instantiated this App."),theme:$O.optional().describe("Current color theme preference."),styles:CO.optional().describe("Style configuration for theming the app."),displayMode:Jc.optional().describe("How the UI is currently displayed."),availableDisplayModes:p.array(Jc).optional().describe("Display modes the host supports."),containerDimensions:p.union([p.object({height:p.number().describe("Fixed container height in pixels.")}),p.object({maxHeight:p.union([p.number(),p.undefined()]).optional().describe("Maximum container height in pixels.")})]).and(p.union([p.object({width:p.number().describe("Fixed container width in pixels.")}),p.object({maxWidth:p.union([p.number(),p.undefined()]).optional().describe("Maximum container width in pixels.")})])).optional().describe(`Container dimensions. Represents the dimensions of the iframe or other
-container holding the app. Specify either width or maxWidth, and either height or maxHeight.`),locale:p.string().optional().describe("User's language and region preference in BCP 47 format."),timeZone:p.string().optional().describe("User's timezone in IANA format."),userAgent:p.string().optional().describe("Host application identifier."),platform:p.union([p.literal("web"),p.literal("desktop"),p.literal("mobile")]).optional().describe("Platform type for responsive design decisions."),deviceCapabilities:p.object({touch:p.boolean().optional().describe("Whether the device supports touch input."),hover:p.boolean().optional().describe("Whether the device supports hover interactions.")}).optional().describe("Device input capabilities."),safeAreaInsets:p.object({top:p.number().describe("Top safe area inset in pixels."),right:p.number().describe("Right safe area inset in pixels."),bottom:p.number().describe("Bottom safe area inset in pixels."),left:p.number().describe("Left safe area inset in pixels.")}).optional().describe("Mobile safe area boundaries in pixels.")}).passthrough(),LO=p.object({method:p.literal("ui/notifications/host-context-changed"),params:Sk.describe("Partial context update containing only changed fields.")}),oM=p.object({method:p.literal("ui/update-model-context"),params:p.object({content:p.array(Gt).optional().describe("Context content blocks (text, image, etc.)."),structuredContent:p.record(p.string(),p.unknown().describe("Structured content for machine-readable context data.")).optional().describe("Structured content for machine-readable context data.")})}),aM=p.object({method:p.literal("ui/initialize"),params:p.object({appInfo:Bt.describe("App identification (name and version)."),appCapabilities:AO.describe("Features and capabilities this app provides."),protocolVersion:p.string().describe("Protocol version this app supports.")})}),qO=p.object({protocolVersion:p.string().describe('Negotiated protocol version string (e.g., "2025-11-21").'),hostInfo:Bt.describe("Host application identification and version."),hostCapabilities:jO.describe("Features and capabilities provided by the host."),hostContext:Sk.describe("Rich context about the host environment.")}).passthrough(),VO={target:"draft-2020-12"};sm=class e extends Fc{_appInfo;_appCapabilities;options;_hostCapabilities;_hostInfo;_hostContext;_registeredTools={};_initializedSent=!1;_registeredEvents=new Set;_events=new y_;_methods=new $_;setRequestHandler=(...t)=>{let[n,...o]=hk("request",t)??t;this._methods.claim(n,"setRequestHandler"),super.setRequestHandler.call(this,n,...o)};setNotificationHandler=(...t)=>{let[n,...o]=hk("notification",t)??t;this._methods.claim(n,"setNotificationHandler"),super.setNotificationHandler.call(this,n,...o)};removeRequestHandler=t=>{this._methods.release(t),super.removeRequestHandler(t)};removeNotificationHandler=t=>{this._methods.release(t),super.removeNotificationHandler(t)};replaceRequestHandler=(t,...n)=>{this._methods.replace(t),super.setRequestHandler.call(this,t,...n)};_assertInitialized(t){if(this._initializedSent)return;let n=`[ext-apps] App.${t}() called before connect() completed the ui/initialize handshake. Await app.connect() before calling this method, or move data loading to an ontoolresult handler.`;if(this.options?.strict)throw Error(n);console.warn(`${n}. This will throw in a future release.`)}eventSchemas={toolinput:RO,toolinputpartial:PO,toolresult:MO,toolcancelled:TO,hostcontextchanged:LO};static ONE_SHOT_EVENTS=new Set(["toolinput","toolinputpartial","toolresult","toolcancelled"]);_everHadListener=new Set;_assertHandlerTiming(t){if(!e.ONE_SHOT_EVENTS.has(t)||this._everHadListener.has(t)||(this._everHadListener.add(t),!this._initializedSent))return;let n=`[ext-apps] "${String(t)}" handler registered after connect() completed the ui/initialize handshake. The host may have already sent this notification. Register handlers before calling app.connect().`;if(this.options?.strict)throw Error(n);console.warn(n)}setEventHandler(t,n){n&&this._assertHandlerTiming(t),this._ensureEventSlot(t),this._events.setHandler(t,n)}addEventListener(t,n){this._assertHandlerTiming(t),this._ensureEventSlot(t),this._events.addEventListener(t,n)}removeEventListener(t,n){this._events.removeEventListener(t,n)}_ensureEventSlot(t){if(this._registeredEvents.has(t))return;let n=this.eventSchemas[t];if(!n)throw Error(`Unknown event: ${String(t)}`);this.setNotificationHandler(n.shape.method.value,{params:n.shape.params},o=>{let r=o;t==="hostcontextchanged"&&(this._hostContext={...this._hostContext,...r}),this._events.dispatch(t,r)}),this._registeredEvents.add(t)}getEventHandler(t){return this._events.getHandler(t)}warnIfRequestHandlerReplaced(t,n,o){n&&o&&console.warn(`[MCP Apps] ${t} handler replaced. Previous handler will no longer be called.`)}constructor(t,n={},o={autoResize:!0}){super(o),this._appInfo=t,this._appCapabilities=n,this.options=o,this._methods.replace("notifications/cancelled"),this._methods.replace("notifications/progress"),!o.allowUnsafeEval&&p.config({jitless:!0}),this.replaceRequestHandler("ping",r=>(console.log("Received ping:",r.params),{})),this.setEventHandler("hostcontextchanged",void 0)}buildContext(t){return t}registerAppCapabilities(t){if(this.transport)throw Error("Cannot register capabilities after transport is established");this._appCapabilities=ZO(this._appCapabilities,t)}registerTool(t,n,o){if(this._registeredTools[t])throw Error(`Tool ${t} is already registered`);let r=this,i=()=>{r._initializedSent&&r._appCapabilities.tools?.listChanged&&r.sendToolListChanged()},a=n.inputSchema!==void 0,s={title:n.title,description:n.description,inputSchema:n.inputSchema,outputSchema:n.outputSchema,annotations:n.annotations,_meta:n._meta,enabled:!0,enable(){this.enabled=!0,i()},disable(){this.enabled=!1,i()},update(c){Object.assign(this,c),i()},remove(){r._registeredTools[t]===s&&(delete r._registeredTools[t],i())},handler:async(c,l)=>{if(!s.enabled)throw Error(`Tool ${t} is disabled`);let d;if(a){let m=s.inputSchema,f=m?await _k(m,c??{},`Invalid input for tool ${t}: `):c??{};d=await o(f,l)}else d=await o(l);return s.outputSchema&&!d.isError&&(d.structuredContent=await _k(s.outputSchema,d.structuredContent,`Invalid output for tool ${t}: `)),d}};return this._registeredTools[t]=s,!this._appCapabilities.tools&&!this.transport&&this.registerAppCapabilities({tools:{listChanged:!0}}),this.ensureToolHandlersInitialized(),i(),s}_toolHandlersInitialized=!1;ensureToolHandlersInitialized(){this._toolHandlersInitialized||(this._toolHandlersInitialized=!0,this.oncalltool=async(t,n)=>{let o=this._registeredTools[t.name];if(!o)throw Error(`Tool ${t.name} not found`);return o.handler(t.arguments,n)},this.onlisttools=async(t,n)=>({tools:await Promise.all(Object.entries(this._registeredTools).filter(([o,r])=>r.enabled).map(async([o,r])=>{let i={name:o,title:r.title,description:r.description,inputSchema:r.inputSchema?await vk(r.inputSchema,"input"):{type:"object",properties:{}}};return r.outputSchema&&(i.outputSchema=await vk(r.outputSchema,"output")),r.annotations&&(i.annotations=r.annotations),r._meta&&(i._meta=r._meta),i}))}))}async sendToolListChanged(t={}){this._assertInitialized("sendToolListChanged"),await this.notification({method:"notifications/tools/list_changed",params:t})}getHostCapabilities(){return this._hostCapabilities}getHostVersion(){return this._hostInfo}getHostContext(){return this._hostContext}get ontoolinput(){return this.getEventHandler("toolinput")}set ontoolinput(t){this.setEventHandler("toolinput",t)}get ontoolinputpartial(){return this.getEventHandler("toolinputpartial")}set ontoolinputpartial(t){this.setEventHandler("toolinputpartial",t)}get ontoolresult(){return this.getEventHandler("toolresult")}set ontoolresult(t){this.setEventHandler("toolresult",t)}get ontoolcancelled(){return this.getEventHandler("toolcancelled")}set ontoolcancelled(t){this.setEventHandler("toolcancelled",t)}get onhostcontextchanged(){return this.getEventHandler("hostcontextchanged")}set onhostcontextchanged(t){this.setEventHandler("hostcontextchanged",t)}_onteardown;get onteardown(){return this._onteardown}set onteardown(t){this.warnIfRequestHandlerReplaced("onteardown",this._onteardown,t),this._onteardown=t,this.replaceRequestHandler("ui/resource-teardown",{params:OO.shape.params,result:NO},(n,o)=>{if(!this._onteardown)throw Error("No onteardown handler set");return this._onteardown(n,o)})}_oncalltool;get oncalltool(){return this._oncalltool}set oncalltool(t){this.warnIfRequestHandlerReplaced("oncalltool",this._oncalltool,t),this._oncalltool=t,this.replaceRequestHandler("tools/call",(n,o)=>{if(!this._oncalltool)throw Error("No oncalltool handler set");return this._oncalltool(n.params,o)})}_onlisttools;get onlisttools(){return this._onlisttools}set onlisttools(t){this.warnIfRequestHandlerReplaced("onlisttools",this._onlisttools,t),this._onlisttools=t,this.replaceRequestHandler("tools/list",(n,o)=>{if(!this._onlisttools)throw Error("No onlisttools handler set");return this._onlisttools(n.params,o)})}assertCapabilityForMethod(t){switch(t){case"sampling/createMessage":if(!this._hostCapabilities?.sampling)throw Error(`Host does not support sampling (required for ${t})`);break}}assertRequestHandlerCapability(t){switch(t){case"tools/call":case"tools/list":if(!this._appCapabilities.tools)throw Error(`Client does not support tool capability (required for ${t})`);return;default:return}}assertNotificationCapability(t){}async callServerTool(t,n){if(this._assertInitialized("callServerTool"),typeof t=="string")throw Error(`callServerTool() expects an object as its first argument, but received a string ("${t}"). Did you mean: callServerTool({ name: "${t}", arguments: { ... } })?`);return await this.request({method:"tools/call",params:t},{onprogress:()=>{},resetTimeoutOnProgress:!0,...n})}async readServerResource(t,n){return this._assertInitialized("readServerResource"),await this.request({method:"resources/read",params:t},n)}async listServerResources(t,n){return this._assertInitialized("listServerResources"),await this.request({method:"resources/list",params:t},n)}async createSamplingMessage(t,n){return this._assertInitialized("createSamplingMessage"),await this.request({method:"sampling/createMessage",params:t},n)}sendMessage(t,n){return this._assertInitialized("sendMessage"),this.request({method:"ui/message",params:t},xO,n)}sendLog(t){return this.notification({method:"notifications/message",params:t})}updateModelContext(t,n){return this._assertInitialized("updateModelContext"),this.request({method:"ui/update-model-context",params:t},Mr,n)}openLink(t,n){return this._assertInitialized("openLink"),this.request({method:"ui/open-link",params:t},kO,n)}sendOpenLink=this.openLink;downloadFile(t,n){return this._assertInitialized("downloadFile"),this.request({method:"ui/download-file",params:t},IO,n)}requestTeardown(t={}){return this.notification({method:"ui/notifications/request-teardown",params:t})}requestDisplayMode(t,n){return this._assertInitialized("requestDisplayMode"),this.request({method:"ui/request-display-mode",params:t},UO,n)}sendSizeChanged(t){return this.notification({method:"ui/notifications/size-changed",params:t})}setupSizeChangedNotifications(){let t=!1,n=0,o=0,r=()=>{t||(t=!0,requestAnimationFrame(()=>{t=!1;let a=document.documentElement,s=a.style.height;a.style.height="max-content";let c=Math.ceil(a.getBoundingClientRect().height);a.style.height=s;let l=Math.ceil(window.innerWidth);(l!==n||c!==o)&&(n=l,o=c,this.sendSizeChanged({width:l,height:c}))}))};r();let i=new ResizeObserver(r);return i.observe(document.documentElement),i.observe(document.body),()=>i.disconnect()}async connect(t=new z_(window.parent,window.parent),n){if(this.transport)throw Error("App is already connected. Call close() before connecting again.");this._initializedSent=!1;try{await super.connect(t);let o=await this.request({method:"ui/initialize",params:{appCapabilities:this._appCapabilities,appInfo:this._appInfo,protocolVersion:bO}},qO,n);if(o===void 0)throw Error(`Server sent invalid initialize result: ${o}`);this._hostCapabilities=o.hostCapabilities,this._hostInfo=o.hostInfo,this._hostContext=o.hostContext,await this.notification({method:"ui/notifications/initialized"}),this._initializedSent=!0,this.options?.autoResize&&this.setupSizeChangedNotifications()}catch(o){throw this.close(),o}}}});var WO=Rk(()=>{bk();var hr=new sm({name:"Chrome Tabs Picker",version:"1.0.0"},{}),Hr=[],Mn=null,zk="",Gc=!1,R_="",cm="",lm=!1,Bc=document.getElementById("tab-list"),Kc=document.getElementById("status-text"),yk=document.getElementById("search-input"),P_=document.getElementById("refresh-btn"),$k=document.getElementById("attached-banner"),FO=document.getElementById("attached-title"),HO=document.getElementById("clear-attach-btn");function fr(e){return e.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}function JO(e){try{return new URL(e).hostname||e}catch{return e}}function Jr(){if(Mn){let n=Hr.find(o=>o.tab_id===Mn);FO.textContent=n?n.title:Mn,$k.style.display="flex"}else $k.style.display="none";if(Gc&&Hr.length===0){Kc.textContent="\u6B63\u5728\u8B80\u53D6 Chrome \u5206\u9801...",Bc.innerHTML='<div class="empty-state">\u6B63\u5728\u9023\u7DDA\u5230\u672C\u6A5F Chrome \u4E26\u540C\u6B65\u5206\u9801...</div>';return}if(cm&&Hr.length===0){Kc.textContent="\u5C1A\u672A\u9023\u7DDA\u5230 Chrome",Bc.innerHTML=`<div class="empty-state error">${fr(cm)}<br/><small>\u8ACB\u78BA\u8A8D Chrome \u5DF2\u958B\u555F\u4E26\u555F\u7528 <code>chrome://inspect/#remote-debugging</code></small></div>`;return}let e=zk.trim().toLowerCase(),t=e?Hr.filter(n=>(n.title||"").toLowerCase().includes(e)||(n.url||"").toLowerCase().includes(e)):Hr;if(Kc.textContent=`\u5171 ${Hr.length} \u500B\u5206\u9801\uFF08\u5DF2\u540C\u6B65\u81F3 @ \u9078\u55AE\uFF09${R_?" \xB7 "+R_:""}`,t.length===0){Bc.innerHTML='<div class="empty-state">\u6C92\u6709\u7B26\u5408\u641C\u5C0B\u689D\u4EF6\u7684 Chrome \u5206\u9801</div>';return}Bc.innerHTML=t.map(n=>{let o=Mn===n.tab_id,r=n.active===!0?'<span class="badge active">\u76EE\u524D\u6AA2\u8996</span>':'<span class="badge bg">\u80CC\u666F\u5206\u9801</span>',i=JO(n.url||""),a=n.rule_name?`<span class="mention-tag">@${fr(n.rule_name)}</span>`:"",s=lm?`<button class="btn ${o?"btn-attached":"btn-primary"}" data-action="attach" data-tab-id="${fr(n.tab_id)}">${o?"\u2713 \u5DF2\u52A0\u5165\u5C0D\u8A71\u6846":"+ \u52A0\u5165\u5C0D\u8A71\u6846"}</button>`:`<span class="hint-text">\u5728\u5C0D\u8A71\u4E2D\u8F38\u5165 @${fr(n.rule_name||"chrome-tab")}</span>`;return`
-        <div class="tab-card ${o?"selected":""}">
-          <div class="tab-header">
-            ${r}
-            <span class="tab-domain">${fr(i)}</span>
+container holding the app. Specify either width or maxWidth, and either height or maxHeight.`),locale:p.string().optional().describe("User's language and region preference in BCP 47 format."),timeZone:p.string().optional().describe("User's timezone in IANA format."),userAgent:p.string().optional().describe("Host application identifier."),platform:p.union([p.literal("web"),p.literal("desktop"),p.literal("mobile")]).optional().describe("Platform type for responsive design decisions."),deviceCapabilities:p.object({touch:p.boolean().optional().describe("Whether the device supports touch input."),hover:p.boolean().optional().describe("Whether the device supports hover interactions.")}).optional().describe("Device input capabilities."),safeAreaInsets:p.object({top:p.number().describe("Top safe area inset in pixels."),right:p.number().describe("Right safe area inset in pixels."),bottom:p.number().describe("Bottom safe area inset in pixels."),left:p.number().describe("Left safe area inset in pixels.")}).optional().describe("Mobile safe area boundaries in pixels.")}).passthrough(),LO=p.object({method:p.literal("ui/notifications/host-context-changed"),params:Sk.describe("Partial context update containing only changed fields.")}),oM=p.object({method:p.literal("ui/update-model-context"),params:p.object({content:p.array(Gt).optional().describe("Context content blocks (text, image, etc.)."),structuredContent:p.record(p.string(),p.unknown().describe("Structured content for machine-readable context data.")).optional().describe("Structured content for machine-readable context data.")})}),aM=p.object({method:p.literal("ui/initialize"),params:p.object({appInfo:Bt.describe("App identification (name and version)."),appCapabilities:AO.describe("Features and capabilities this app provides."),protocolVersion:p.string().describe("Protocol version this app supports.")})}),qO=p.object({protocolVersion:p.string().describe('Negotiated protocol version string (e.g., "2025-11-21").'),hostInfo:Bt.describe("Host application identification and version."),hostCapabilities:jO.describe("Features and capabilities provided by the host."),hostContext:Sk.describe("Rich context about the host environment.")}).passthrough(),VO={target:"draft-2020-12"};sm=class e extends Fc{_appInfo;_appCapabilities;options;_hostCapabilities;_hostInfo;_hostContext;_registeredTools={};_initializedSent=!1;_registeredEvents=new Set;_events=new y_;_methods=new $_;setRequestHandler=(...t)=>{let[n,...o]=hk("request",t)??t;this._methods.claim(n,"setRequestHandler"),super.setRequestHandler.call(this,n,...o)};setNotificationHandler=(...t)=>{let[n,...o]=hk("notification",t)??t;this._methods.claim(n,"setNotificationHandler"),super.setNotificationHandler.call(this,n,...o)};removeRequestHandler=t=>{this._methods.release(t),super.removeRequestHandler(t)};removeNotificationHandler=t=>{this._methods.release(t),super.removeNotificationHandler(t)};replaceRequestHandler=(t,...n)=>{this._methods.replace(t),super.setRequestHandler.call(this,t,...n)};_assertInitialized(t){if(this._initializedSent)return;let n=`[ext-apps] App.${t}() called before connect() completed the ui/initialize handshake. Await app.connect() before calling this method, or move data loading to an ontoolresult handler.`;if(this.options?.strict)throw Error(n);console.warn(`${n}. This will throw in a future release.`)}eventSchemas={toolinput:RO,toolinputpartial:PO,toolresult:MO,toolcancelled:TO,hostcontextchanged:LO};static ONE_SHOT_EVENTS=new Set(["toolinput","toolinputpartial","toolresult","toolcancelled"]);_everHadListener=new Set;_assertHandlerTiming(t){if(!e.ONE_SHOT_EVENTS.has(t)||this._everHadListener.has(t)||(this._everHadListener.add(t),!this._initializedSent))return;let n=`[ext-apps] "${String(t)}" handler registered after connect() completed the ui/initialize handshake. The host may have already sent this notification. Register handlers before calling app.connect().`;if(this.options?.strict)throw Error(n);console.warn(n)}setEventHandler(t,n){n&&this._assertHandlerTiming(t),this._ensureEventSlot(t),this._events.setHandler(t,n)}addEventListener(t,n){this._assertHandlerTiming(t),this._ensureEventSlot(t),this._events.addEventListener(t,n)}removeEventListener(t,n){this._events.removeEventListener(t,n)}_ensureEventSlot(t){if(this._registeredEvents.has(t))return;let n=this.eventSchemas[t];if(!n)throw Error(`Unknown event: ${String(t)}`);this.setNotificationHandler(n.shape.method.value,{params:n.shape.params},o=>{let r=o;t==="hostcontextchanged"&&(this._hostContext={...this._hostContext,...r}),this._events.dispatch(t,r)}),this._registeredEvents.add(t)}getEventHandler(t){return this._events.getHandler(t)}warnIfRequestHandlerReplaced(t,n,o){n&&o&&console.warn(`[MCP Apps] ${t} handler replaced. Previous handler will no longer be called.`)}constructor(t,n={},o={autoResize:!0}){super(o),this._appInfo=t,this._appCapabilities=n,this.options=o,this._methods.replace("notifications/cancelled"),this._methods.replace("notifications/progress"),!o.allowUnsafeEval&&p.config({jitless:!0}),this.replaceRequestHandler("ping",r=>(console.log("Received ping:",r.params),{})),this.setEventHandler("hostcontextchanged",void 0)}buildContext(t){return t}registerAppCapabilities(t){if(this.transport)throw Error("Cannot register capabilities after transport is established");this._appCapabilities=ZO(this._appCapabilities,t)}registerTool(t,n,o){if(this._registeredTools[t])throw Error(`Tool ${t} is already registered`);let r=this,i=()=>{r._initializedSent&&r._appCapabilities.tools?.listChanged&&r.sendToolListChanged()},a=n.inputSchema!==void 0,s={title:n.title,description:n.description,inputSchema:n.inputSchema,outputSchema:n.outputSchema,annotations:n.annotations,_meta:n._meta,enabled:!0,enable(){this.enabled=!0,i()},disable(){this.enabled=!1,i()},update(c){Object.assign(this,c),i()},remove(){r._registeredTools[t]===s&&(delete r._registeredTools[t],i())},handler:async(c,l)=>{if(!s.enabled)throw Error(`Tool ${t} is disabled`);let d;if(a){let m=s.inputSchema,f=m?await _k(m,c??{},`Invalid input for tool ${t}: `):c??{};d=await o(f,l)}else d=await o(l);return s.outputSchema&&!d.isError&&(d.structuredContent=await _k(s.outputSchema,d.structuredContent,`Invalid output for tool ${t}: `)),d}};return this._registeredTools[t]=s,!this._appCapabilities.tools&&!this.transport&&this.registerAppCapabilities({tools:{listChanged:!0}}),this.ensureToolHandlersInitialized(),i(),s}_toolHandlersInitialized=!1;ensureToolHandlersInitialized(){this._toolHandlersInitialized||(this._toolHandlersInitialized=!0,this.oncalltool=async(t,n)=>{let o=this._registeredTools[t.name];if(!o)throw Error(`Tool ${t.name} not found`);return o.handler(t.arguments,n)},this.onlisttools=async(t,n)=>({tools:await Promise.all(Object.entries(this._registeredTools).filter(([o,r])=>r.enabled).map(async([o,r])=>{let i={name:o,title:r.title,description:r.description,inputSchema:r.inputSchema?await vk(r.inputSchema,"input"):{type:"object",properties:{}}};return r.outputSchema&&(i.outputSchema=await vk(r.outputSchema,"output")),r.annotations&&(i.annotations=r.annotations),r._meta&&(i._meta=r._meta),i}))}))}async sendToolListChanged(t={}){this._assertInitialized("sendToolListChanged"),await this.notification({method:"notifications/tools/list_changed",params:t})}getHostCapabilities(){return this._hostCapabilities}getHostVersion(){return this._hostInfo}getHostContext(){return this._hostContext}get ontoolinput(){return this.getEventHandler("toolinput")}set ontoolinput(t){this.setEventHandler("toolinput",t)}get ontoolinputpartial(){return this.getEventHandler("toolinputpartial")}set ontoolinputpartial(t){this.setEventHandler("toolinputpartial",t)}get ontoolresult(){return this.getEventHandler("toolresult")}set ontoolresult(t){this.setEventHandler("toolresult",t)}get ontoolcancelled(){return this.getEventHandler("toolcancelled")}set ontoolcancelled(t){this.setEventHandler("toolcancelled",t)}get onhostcontextchanged(){return this.getEventHandler("hostcontextchanged")}set onhostcontextchanged(t){this.setEventHandler("hostcontextchanged",t)}_onteardown;get onteardown(){return this._onteardown}set onteardown(t){this.warnIfRequestHandlerReplaced("onteardown",this._onteardown,t),this._onteardown=t,this.replaceRequestHandler("ui/resource-teardown",{params:OO.shape.params,result:NO},(n,o)=>{if(!this._onteardown)throw Error("No onteardown handler set");return this._onteardown(n,o)})}_oncalltool;get oncalltool(){return this._oncalltool}set oncalltool(t){this.warnIfRequestHandlerReplaced("oncalltool",this._oncalltool,t),this._oncalltool=t,this.replaceRequestHandler("tools/call",(n,o)=>{if(!this._oncalltool)throw Error("No oncalltool handler set");return this._oncalltool(n.params,o)})}_onlisttools;get onlisttools(){return this._onlisttools}set onlisttools(t){this.warnIfRequestHandlerReplaced("onlisttools",this._onlisttools,t),this._onlisttools=t,this.replaceRequestHandler("tools/list",(n,o)=>{if(!this._onlisttools)throw Error("No onlisttools handler set");return this._onlisttools(n.params,o)})}assertCapabilityForMethod(t){switch(t){case"sampling/createMessage":if(!this._hostCapabilities?.sampling)throw Error(`Host does not support sampling (required for ${t})`);break}}assertRequestHandlerCapability(t){switch(t){case"tools/call":case"tools/list":if(!this._appCapabilities.tools)throw Error(`Client does not support tool capability (required for ${t})`);return;default:return}}assertNotificationCapability(t){}async callServerTool(t,n){if(this._assertInitialized("callServerTool"),typeof t=="string")throw Error(`callServerTool() expects an object as its first argument, but received a string ("${t}"). Did you mean: callServerTool({ name: "${t}", arguments: { ... } })?`);return await this.request({method:"tools/call",params:t},{onprogress:()=>{},resetTimeoutOnProgress:!0,...n})}async readServerResource(t,n){return this._assertInitialized("readServerResource"),await this.request({method:"resources/read",params:t},n)}async listServerResources(t,n){return this._assertInitialized("listServerResources"),await this.request({method:"resources/list",params:t},n)}async createSamplingMessage(t,n){return this._assertInitialized("createSamplingMessage"),await this.request({method:"sampling/createMessage",params:t},n)}sendMessage(t,n){return this._assertInitialized("sendMessage"),this.request({method:"ui/message",params:t},xO,n)}sendLog(t){return this.notification({method:"notifications/message",params:t})}updateModelContext(t,n){return this._assertInitialized("updateModelContext"),this.request({method:"ui/update-model-context",params:t},Mr,n)}openLink(t,n){return this._assertInitialized("openLink"),this.request({method:"ui/open-link",params:t},kO,n)}sendOpenLink=this.openLink;downloadFile(t,n){return this._assertInitialized("downloadFile"),this.request({method:"ui/download-file",params:t},IO,n)}requestTeardown(t={}){return this.notification({method:"ui/notifications/request-teardown",params:t})}requestDisplayMode(t,n){return this._assertInitialized("requestDisplayMode"),this.request({method:"ui/request-display-mode",params:t},UO,n)}sendSizeChanged(t){return this.notification({method:"ui/notifications/size-changed",params:t})}setupSizeChangedNotifications(){let t=!1,n=0,o=0,r=()=>{t||(t=!0,requestAnimationFrame(()=>{t=!1;let a=document.documentElement,s=a.style.height;a.style.height="max-content";let c=Math.ceil(a.getBoundingClientRect().height);a.style.height=s;let l=Math.ceil(window.innerWidth);(l!==n||c!==o)&&(n=l,o=c,this.sendSizeChanged({width:l,height:c}))}))};r();let i=new ResizeObserver(r);return i.observe(document.documentElement),i.observe(document.body),()=>i.disconnect()}async connect(t=new z_(window.parent,window.parent),n){if(this.transport)throw Error("App is already connected. Call close() before connecting again.");this._initializedSent=!1;try{await super.connect(t);let o=await this.request({method:"ui/initialize",params:{appCapabilities:this._appCapabilities,appInfo:this._appInfo,protocolVersion:bO}},qO,n);if(o===void 0)throw Error(`Server sent invalid initialize result: ${o}`);this._hostCapabilities=o.hostCapabilities,this._hostInfo=o.hostInfo,this._hostContext=o.hostContext,await this.notification({method:"ui/notifications/initialized"}),this._initializedSent=!0,this.options?.autoResize&&this.setupSizeChangedNotifications()}catch(o){throw this.close(),o}}}});var WO=Rk(()=>{bk();window.__MCP_EXT_APPS__={App:sm,applyDocumentTheme:I_,applyHostStyleVariables:x_};});WO();})();</script>
+<script>
+(() => {
+  const { App, applyDocumentTheme, applyHostStyleVariables } = window.__MCP_EXT_APPS__;
+  const app = new App({ name: "Chrome Tabs", version: "1.1.0" }, {});
+
+  let allTabs = [];
+  let windowCount = 1;
+  let selectedIds = new Set();
+  let query = "";
+  let isLoading = true;
+  let updatedAt = "";
+  let errorMsg = "";
+  let canAttachContext = false;
+  let kbFocusIndex = -1;
+  let copiedTabId = null;
+  let copyTimer = null;
+
+  // Cache whether a data-URI favicon is pure dark monochrome on transparent background
+  const darkIconAnalysisCache = new Map();
+
+  const listEl = document.getElementById("tab-list");
+  const searchEl = document.getElementById("search-input");
+  const countPillEl = document.getElementById("count-pill");
+  const kbdHintEl = document.getElementById("kbd-hint");
+  const clearQueryBtn = document.getElementById("clear-query-btn");
+  const refreshBtn = document.getElementById("refresh-btn");
+  const footerStatusEl = document.getElementById("footer-status");
+  const clearAttachBtn = document.getElementById("clear-attach-btn");
+
+  const SVG_FALLBACKS = {
+    globe: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3.6 9h16.8"/><path d="M3.6 15h16.8"/><path d="M11.5 3a17 17 0 0 0 0 18"/><path d="M12.5 3a17 17 0 0 1 0 18"/></svg>',
+    local: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
+    system: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+    file: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>'
+  };
+
+  function esc(str) {
+    return String(str || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function applyThemeCleanly(theme, variables) {
+    const killer = document.createElement("style");
+    killer.textContent = "*,*::before,*::after{transition:none !important}";
+    document.head.appendChild(killer);
+    if (theme) {
+      document.documentElement.setAttribute("data-theme", theme);
+      try { applyDocumentTheme(theme); } catch {}
+    }
+    if (variables) {
+      try { applyHostStyleVariables(variables); } catch {}
+    }
+    void document.documentElement.offsetHeight;
+    requestAnimationFrame(() => {
+      killer.remove();
+    });
+  }
+
+  function parseUrlParts(rawUrl) {
+    const raw = String(rawUrl || "").trim();
+    if (!raw) return { domain: "about:blank", path: "", kind: "globe", fallbackSrc: "" };
+    try {
+      const u = new URL(raw);
+      const proto = (u.protocol || "").replace(":", "").toLowerCase();
+      const host = (u.hostname || "").replace(/^www\./i, "");
+      if (proto === "chrome" || proto === "edge" || proto === "devtools" || proto === "chrome-extension") {
+        return { domain: proto + "://" + (u.hostname || ""), path: u.pathname !== "/" ? u.pathname : "", kind: "system", fallbackSrc: "" };
+      }
+      if (proto === "file") {
+        const segs = (u.pathname || "").split("/").filter(Boolean);
+        return { domain: "本機檔案", path: segs.length ? " · " + decodeURIComponent(segs[segs.length - 1]) : "", kind: "file", fallbackSrc: "" };
+      }
+      const isLocal = host === "localhost" || host === "127.0.0.1" || host === "::1" || host.endsWith(".local") || /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host);
+      const dispHost = u.port ? (host + ":" + u.port) : host;
+      let dispPath = (u.pathname && u.pathname !== "/") ? u.pathname : "";
+      if (dispPath.length > 34) dispPath = dispPath.slice(0, 32) + "…";
+      const fallbackSrc = (!isLocal && host.includes(".") && (proto === "http" || proto === "https"))
+        ? ("https://www.google.com/s2/favicons?domain=" + encodeURIComponent(host) + "&sz=64")
+        : "";
+      return {
+        domain: dispHost || raw,
+        path: dispPath,
+        kind: isLocal ? "local" : "globe",
+        fallbackSrc
+      };
+    } catch {
+      return { domain: raw, path: "", kind: "globe", fallbackSrc: "" };
+    }
+  }
+
+  function getFilteredTabs() {
+    const q = query.trim().toLowerCase();
+    if (!q) return allTabs;
+    return allTabs.filter(t => {
+      const title = (t.title || "").toLowerCase();
+      const url = (t.url || "").toLowerCase();
+      const rule = (t.rule_name || "").toLowerCase();
+      return title.includes(q) || url.includes(q) || rule.includes(q);
+    });
+  }
+
+  function inspectFaviconContrast(imgEl) {
+    const src = imgEl.getAttribute("src") || "";
+    if (!src.startsWith("data:")) return;
+    if (darkIconAnalysisCache.has(src)) {
+      if (darkIconAnalysisCache.get(src)) imgEl.classList.add("invert-on-dark");
+      return;
+    }
+    try {
+      const c = document.createElement("canvas");
+      c.width = 16;
+      c.height = 16;
+      const ctx = c.getContext("2d", { willReadFrequently: true });
+      if (!ctx) return;
+      ctx.drawImage(imgEl, 0, 0, 16, 16);
+      const data = ctx.getImageData(0, 0, 16, 16).data;
+      let opaqueCount = 0;
+      let brightCount = 0;
+      let transparentCount = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const a = data[i + 3];
+        if (a < 32) {
+          transparentCount++;
+          continue;
+        }
+        opaqueCount++;
+        const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        if (lum > 52) brightCount++;
+      }
+      const shouldInvert = opaqueCount > 12 && transparentCount > 32 && (brightCount / opaqueCount) < 0.08;
+      darkIconAnalysisCache.set(src, shouldInvert);
+      if (shouldInvert) imgEl.classList.add("invert-on-dark");
+    } catch {
+      darkIconAnalysisCache.set(src, false);
+    }
+  }
+
+  function buildSiteIconHtml(tab, parsed) {
+    const iconSrc = tab.favicon || parsed.fallbackSrc || "";
+    const fallbackSvg = SVG_FALLBACKS[parsed.kind] || SVG_FALLBACKS.globe;
+    const activeDot = tab.active === true
+      ? '<span class="active-dot" title="Chrome 目前顯示中的分頁"></span>'
+      : "";
+    if (!iconSrc) {
+      return `
+        <div class="site-icon-wrap">
+          <div class="site-icon-tile">${fallbackSvg}</div>
+          ${activeDot}
+        </div>
+      `;
+    }
+    const needsInvertClass = darkIconAnalysisCache.get(iconSrc) === true ? " invert-on-dark" : "";
+    return `
+      <div class="site-icon-wrap">
+        <div class="site-icon-tile" data-fallback-kind="${esc(parsed.kind)}">
+          <img class="site-favicon${needsInvertClass}" src="${esc(iconSrc)}" alt="" decoding="async" />
+        </div>
+        ${activeDot}
+      </div>
+    `;
+  }
+
+  function render() {
+    // Update omnibox auxiliary indicators
+    const filtered = getFilteredTabs();
+    const hasQuery = query.trim().length > 0;
+    kbdHintEl.style.display = hasQuery ? "none" : "inline-block";
+    clearQueryBtn.style.display = hasQuery ? "inline-flex" : "none";
+
+    if (allTabs.length > 0) {
+      countPillEl.textContent = hasQuery ? `${filtered.length}/${allTabs.length}` : `${allTabs.length}`;
+    } else {
+      countPillEl.textContent = "";
+    }
+
+    refreshBtn.classList.toggle("is-loading", isLoading);
+    refreshBtn.disabled = isLoading;
+
+    // Prune stale selected IDs if tabs closed
+    if (allTabs.length > 0 && selectedIds.size > 0) {
+      const liveSet = new Set(allTabs.map(t => t.tab_id));
+      for (const id of Array.from(selectedIds)) {
+        if (!liveSet.has(id)) selectedIds.delete(id);
+      }
+    }
+
+    // State 1: Initial loading
+    if (isLoading && allTabs.length === 0) {
+      listEl.innerHTML = `
+        <div class="state-view">
+          <div class="state-icon-box">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
           </div>
-          <div class="tab-title" title="${fr(n.title||"\u672A\u547D\u540D\u5206\u9801")}">${fr(n.title||"\u672A\u547D\u540D\u5206\u9801")}</div>
-          <div class="tab-url" title="${fr(n.url||"")}">${fr(n.url||"")}</div>
-          <div class="tab-footer">
-            ${a}
-            ${s}
+          <div class="state-title">正在讀取開啟中的分頁</div>
+          <p class="state-desc">正在連線至本機 Google Chrome 並同步網站圖示...</p>
+        </div>
+      `;
+      footerStatusEl.innerHTML = '<span class="footer-text">正在連線至 Chrome...</span>';
+      clearAttachBtn.style.display = "none";
+      return;
+    }
+
+    // State 2: Offline / Error with 0 tabs
+    if (errorMsg && allTabs.length === 0) {
+      listEl.innerHTML = `
+        <div class="state-view">
+          <div class="state-icon-box">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </div>
+          <div class="state-title">尚未偵測到可連線的 Chrome</div>
+          <p class="state-desc">請確認 Chrome 已開啟，並於 <code>chrome://inspect/#remote-debugging</code> 勾選允許遠端偵錯。</p>
+          <button id="retry-connect-btn" class="solid-btn" type="button">重新檢測連線</button>
+        </div>
+      `;
+      footerStatusEl.innerHTML = '<span class="footer-text">尚未連線至 Chrome</span>';
+      clearAttachBtn.style.display = "none";
+      const retryBtn = document.getElementById("retry-connect-btn");
+      if (retryBtn) retryBtn.addEventListener("click", () => refreshTabs());
+      return;
+    }
+
+    // State 3: Empty search result or 0 open tabs
+    if (filtered.length === 0) {
+      listEl.innerHTML = `
+        <div class="state-view">
+          <div class="state-icon-box">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          </div>
+          <div class="state-title">${hasQuery ? "找不到相符的分頁" : "目前沒有開啟中的分頁"}</div>
+          <p class="state-desc">${hasQuery ? `沒有符合「${esc(query.trim())}」的標題或網域。` : "在 Chrome 開啟網頁後點擊右上角重新整理即可同步。"}</p>
+        </div>
+      `;
+      updateFooter();
+      return;
+    }
+
+    if (kbFocusIndex >= filtered.length) kbFocusIndex = filtered.length - 1;
+
+    // Render rows (group by Chrome window only when >1 windows exist and not filtering)
+    const showGroups = windowCount > 1 && !hasQuery;
+    let lastWinIdx = null;
+    const htmlParts = [];
+
+    const winCounts = new Map();
+    if (showGroups) {
+      for (const t of filtered) {
+        const w = t.window_index || 1;
+        winCounts.set(w, (winCounts.get(w) || 0) + 1);
+      }
+    }
+
+    filtered.forEach((t, idx) => {
+      const wIdx = t.window_index || 1;
+      if (showGroups && wIdx !== lastWinIdx) {
+        lastWinIdx = wIdx;
+        htmlParts.push(`
+          <div class="window-group-label">
+            <span>視窗 ${wIdx}</span>
+            <span class="tabular">${winCounts.get(wIdx) || 0}</span>
+          </div>
+        `);
+      }
+
+      const isSel = selectedIds.has(t.tab_id);
+      const isKb = idx === kbFocusIndex;
+      const isCopied = copiedTabId === t.tab_id;
+      const parsed = parseUrlParts(t.url);
+      const siteIconHtml = buildSiteIconHtml(t, parsed);
+      const titleText = t.title || "未命名分頁";
+      const mentionText = t.rule_name ? `@${t.rule_name}` : "@chrome-tab";
+
+      const checkControl = canAttachContext
+        ? `<button class="check-btn" type="button" data-action="multi" data-tab-id="${esc(t.tab_id)}" title="${isSel ? "取消綁定此分頁" : "多選加入此分頁"}">
+            ${isSel
+              ? '<span class="check-filled"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>'
+              : '<span class="check-ring"></span>'}
+           </button>`
+        : "";
+
+      htmlParts.push(`
+        <div class="tab-row${isSel ? " is-selected" : ""}${isKb ? " is-kb-focused" : ""}"
+             role="option"
+             aria-selected="${isSel ? "true" : "false"}"
+             data-row-index="${idx}"
+             data-tab-id="${esc(t.tab_id)}">
+          <span class="row-accent-bar"></span>
+          ${siteIconHtml}
+          <div class="tab-main">
+            <div class="tab-title" title="${esc(titleText)}">${esc(titleText)}</div>
+            <div class="tab-sub" title="${esc(t.url || "")}">
+              <span>${esc(parsed.domain)}</span><span class="tab-sub-path">${esc(parsed.path)}</span>
+            </div>
+          </div>
+          <div class="row-actions">
+            <button class="icon-btn copy-btn${isCopied ? " is-copied" : ""}"
+                    type="button"
+                    data-action="copy"
+                    data-tab-id="${esc(t.tab_id)}"
+                    title="複製 ${esc(mentionText)}">
+              <svg class="ic-at" width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>
+              <svg class="ic-ok" width="12.5" height="12.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            </button>
+            ${checkControl}
           </div>
         </div>
-      `}).join("")}function wk(e){e&&(Array.isArray(e.tabs)&&(Hr=e.tabs),e.updated_at&&(R_=e.updated_at),cm=e.error||"",Gc=!1,Jr())}async function BO(e){let t=Hr.find(o=>o.tab_id===e);if(!t||!lm)return;if(Mn===e){await kk();return}let n=["[\u6307\u5B9A\u64CD\u4F5C Chrome \u5206\u9801]","\u8ACB\u4F7F\u7528 computer-use \u63D2\u4EF6\u7684 cua-driver \u700F\u89BD\u5668\u5DE5\u5177\u5728\u80CC\u666F\u64CD\u4F5C\u4EE5\u4E0B\u6307\u5B9A\u5206\u9801\uFF08\u4E0D\u8981\u5207\u8D70\u4F7F\u7528\u8005\u76EE\u524D\u6B63\u5728\u770B\u7684\u5206\u9801\uFF1B\u5207\u56DE\u6B64\u5206\u9801\u6642\u81EA\u52D5\u986F\u793A\u540C\u8272\u5916\u6846\u8207\u6E38\u6A19\uFF0C\u5207\u8D70\u6642\u81EA\u52D5\u96B1\u85CF\uFF09\uFF1A",`- \u5206\u9801\u6A19\u984C\uFF1A${t.title}`,`- \u5206\u9801\u7DB2\u5740\uFF1A${t.url}`,`- Chrome \u8996\u7A97\uFF1Apid=${t.pid}, window_id=${t.window_id}`,`- \u7D81\u5B9A\u8B58\u5225\u78BC\uFF1Atarget_id=${t.target_id}, tab_id=${t.tab_id}`].join(`
-`);try{await hr.updateModelContext({content:[{type:"text",text:n}]}),Mn=e,Jr()}catch(o){Kc.textContent=`\u9644\u52A0\u5931\u6557\uFF1A${String(o)}`}}async function kk(){if(lm)try{await hr.updateModelContext({content:[]}),Mn=null,Jr()}catch(e){Kc.textContent=`\u6E05\u9664\u5931\u6557\uFF1A${String(e)}`}}async function KO(){Gc=!0,P_.disabled=!0,Jr();try{let e=await hr.callServerTool({name:"refresh_chrome_tabs_app",arguments:{}});wk(e?.structuredContent)}catch(e){cm=String(e),Gc=!1,Jr()}finally{P_.disabled=!1}}yk.addEventListener("input",()=>{zk=yk.value,Jr()});P_.addEventListener("click",()=>{KO()});HO.addEventListener("click",()=>{kk()});Bc.addEventListener("click",e=>{let t=e.target?.closest('[data-action="attach"]');if(!t)return;let n=t.getAttribute("data-tab-id");n&&BO(n)});hr.ontoolinput=()=>{Gc=!0,Jr()};hr.ontoolresult=e=>{wk(e?.structuredContent)};hr.onhostcontextchanged=e=>{e?.theme&&I_(e.theme),e?.styles?.variables&&x_(e.styles.variables)};async function GO(){await hr.connect();let e=hr.getHostContext();e?.theme&&I_(e.theme),e?.styles?.variables&&x_(e.styles.variables),lm=!!hr.getHostCapabilities()?.updateModelContext,Jr()}GO()});WO();})();
-/*! Bundled license information:
+      `);
+    });
 
-@modelcontextprotocol/client/dist/src-CeKsbNLO.mjs:
-  (*!
-  * content-type
-  * Copyright(c) 2015 Douglas Christopher Wilson
-  * MIT Licensed
-  *)
-*/
+    listEl.innerHTML = htmlParts.join("");
+
+    // Bind image load / fallback handlers cleanly without inline event attributes
+    listEl.querySelectorAll(".site-favicon").forEach(img => {
+      img.addEventListener("load", () => inspectFaviconContrast(img), { once: true });
+      img.addEventListener("error", () => {
+        const tile = img.closest(".site-icon-tile");
+        if (tile) {
+          const kind = tile.getAttribute("data-fallback-kind") || "globe";
+          tile.innerHTML = SVG_FALLBACKS[kind] || SVG_FALLBACKS.globe;
+        }
+      }, { once: true });
+    });
+
+    updateFooter();
+  }
+
+  function updateFooter() {
+    if (!canAttachContext) {
+      footerStatusEl.innerHTML = `<span class="footer-text">點擊分頁可複製 @chrome-tab 標籤${updatedAt ? " · " + esc(updatedAt) : ""}</span>`;
+      clearAttachBtn.style.display = "none";
+      return;
+    }
+
+    if (selectedIds.size > 0) {
+      let label = "";
+      if (selectedIds.size === 1) {
+        const onlyId = Array.from(selectedIds)[0];
+        const tab = allTabs.find(x => x.tab_id === onlyId);
+        label = tab ? `已綁定：${tab.title || "1 個分頁"}` : "已綁定 1 個分頁";
+      } else {
+        label = `已綁定 ${selectedIds.size} 個分頁至對話`;
+      }
+      footerStatusEl.innerHTML = `
+        <span class="footer-dot"></span>
+        <span class="footer-text is-bound tabular" title="${esc(label)}">${esc(label)}</span>
+      `;
+      clearAttachBtn.style.display = "inline-block";
+    } else {
+      footerStatusEl.innerHTML = `
+        <span class="footer-text tabular">點擊分頁附加至對話${updatedAt ? " · " + esc(updatedAt) : ""}</span>
+      `;
+      clearAttachBtn.style.display = "none";
+    }
+  }
+
+  async function syncSelectionToHost() {
+    if (!canAttachContext) return;
+    const chosen = allTabs.filter(t => selectedIds.has(t.tab_id));
+    if (chosen.length === 0) {
+      try {
+        await app.updateModelContext({ content: [] });
+      } catch (err) {
+        footerStatusEl.innerHTML = `<span class="footer-text">清除失敗：${esc(String(err))}</span>`;
+      }
+      return;
+    }
+
+    const header = chosen.length === 1
+      ? "[指定操作 Chrome 分頁]"
+      : `[指定操作 ${chosen.length} 個 Chrome 分頁]`;
+
+    const lines = [
+      header,
+      "請使用 computer-use 插件的 cua-driver 瀏覽器工具在背景操作以下指定分頁（不要切走使用者目前正在看的分頁；切回目標分頁時自動顯示同色外框與游標，切走時自動隱藏）："
+    ];
+
+    chosen.forEach((t, idx) => {
+      if (chosen.length > 1) lines.push(`\n#${idx + 1}`);
+      lines.push(`- 分頁標題：${t.title}`);
+      lines.push(`- 分頁網址：${t.url}`);
+      lines.push(`- Chrome 視窗：pid=${t.pid}, window_id=${t.window_id}`);
+      lines.push(`- 綁定識別碼：target_id=${t.target_id}, tab_id=${t.tab_id}`);
+    });
+
+    try {
+      await app.updateModelContext({
+        content: [{ type: "text", text: lines.join("\n") }]
+      });
+    } catch (err) {
+      footerStatusEl.innerHTML = `<span class="footer-text">綁定失敗：${esc(String(err))}</span>`;
+    }
+  }
+
+  async function copyTabMention(tabId) {
+    const tab = allTabs.find(t => t.tab_id === tabId);
+    if (!tab) return;
+    const mention = "@" + (tab.rule_name || "chrome-tab");
+    try {
+      await navigator.clipboard.writeText(mention);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = mention;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch {}
+      ta.remove();
+    }
+    copiedTabId = tabId;
+    if (copyTimer) clearTimeout(copyTimer);
+    render();
+    copyTimer = setTimeout(() => {
+      copiedTabId = null;
+      render();
+    }, 1200);
+  }
+
+  async function handleRowSelect(tabId, additive) {
+    if (!canAttachContext) {
+      await copyTabMention(tabId);
+      return;
+    }
+    if (additive) {
+      if (selectedIds.has(tabId)) selectedIds.delete(tabId);
+      else selectedIds.add(tabId);
+    } else {
+      if (selectedIds.size === 1 && selectedIds.has(tabId)) {
+        selectedIds.clear();
+      } else {
+        selectedIds.clear();
+        selectedIds.add(tabId);
+      }
+    }
+    render();
+    await syncSelectionToHost();
+  }
+
+  async function clearAllSelections() {
+    selectedIds.clear();
+    render();
+    await syncSelectionToHost();
+  }
+
+  function ingestPayload(sc) {
+    if (sc && typeof sc === "object") {
+      if (Array.isArray(sc.tabs)) allTabs = sc.tabs;
+      if (typeof sc.window_count === "number" && sc.window_count > 0) windowCount = sc.window_count;
+      if (sc.updated_at) updatedAt = sc.updated_at;
+      errorMsg = sc.error || "";
+    }
+    isLoading = false;
+    render();
+  }
+
+  async function refreshTabs() {
+    isLoading = true;
+    render();
+    try {
+      const res = await app.callServerTool({ name: "refresh_chrome_tabs_app", arguments: {} });
+      ingestPayload(res && res.structuredContent);
+    } catch (err) {
+      errorMsg = String(err);
+      isLoading = false;
+      render();
+    }
+  }
+
+  // Event Listeners
+  searchEl.addEventListener("input", () => {
+    query = searchEl.value;
+    kbFocusIndex = query.trim() ? 0 : -1;
+    render();
+  });
+
+  clearQueryBtn.addEventListener("click", () => {
+    query = "";
+    searchEl.value = "";
+    kbFocusIndex = -1;
+    render();
+    searchEl.focus();
+  });
+
+  refreshBtn.addEventListener("click", () => refreshTabs());
+  clearAttachBtn.addEventListener("click", () => clearAllSelections());
+
+  listEl.addEventListener("click", (e) => {
+    const copyBtn = e.target.closest('[data-action="copy"]');
+    if (copyBtn) {
+      e.stopPropagation();
+      const id = copyBtn.getAttribute("data-tab-id");
+      if (id) copyTabMention(id);
+      return;
+    }
+    const multiBtn = e.target.closest('[data-action="multi"]');
+    if (multiBtn) {
+      e.stopPropagation();
+      const id = multiBtn.getAttribute("data-tab-id");
+      if (id) handleRowSelect(id, true);
+      return;
+    }
+    const row = e.target.closest(".tab-row");
+    if (!row) return;
+    const id = row.getAttribute("data-tab-id");
+    const rIdx = Number(row.getAttribute("data-row-index"));
+    if (!Number.isNaN(rIdx)) kbFocusIndex = rIdx;
+    if (id) handleRowSelect(id, e.ctrlKey || e.metaKey || e.shiftKey);
+  });
+
+  window.addEventListener("keydown", (e) => {
+    const inSearch = document.activeElement === searchEl;
+    if (e.key === "/" && !inSearch && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      searchEl.focus();
+      searchEl.select();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      searchEl.focus();
+      searchEl.select();
+      return;
+    }
+    if (e.key === "Escape") {
+      if (query) {
+        e.preventDefault();
+        query = "";
+        searchEl.value = "";
+        kbFocusIndex = -1;
+        render();
+        return;
+      }
+      if (inSearch) {
+        searchEl.blur();
+        return;
+      }
+      if (selectedIds.size > 0) {
+        e.preventDefault();
+        clearAllSelections();
+      }
+      return;
+    }
+
+    const filtered = getFilteredTabs();
+    if (!filtered.length) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      kbFocusIndex = kbFocusIndex < filtered.length - 1 ? kbFocusIndex + 1 : 0;
+      render();
+      const el = listEl.querySelector(`[data-row-index="${kbFocusIndex}"]`);
+      if (el) el.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      kbFocusIndex = kbFocusIndex > 0 ? kbFocusIndex - 1 : filtered.length - 1;
+      render();
+      const el = listEl.querySelector(`[data-row-index="${kbFocusIndex}"]`);
+      if (el) el.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter" && kbFocusIndex >= 0 && kbFocusIndex < filtered.length) {
+      e.preventDefault();
+      const target = filtered[kbFocusIndex];
+      if (target && target.tab_id) {
+        handleRowSelect(target.tab_id, e.ctrlKey || e.metaKey || e.shiftKey);
+      }
+    }
+  });
+
+  // Register MCP App lifecycle handlers BEFORE connect()
+  app.ontoolinput = () => {
+    isLoading = true;
+    render();
+  };
+
+  app.ontoolresult = (res) => {
+    ingestPayload(res && res.structuredContent);
+  };
+
+  app.onhostcontextchanged = (ctx) => {
+    if (ctx) {
+      applyThemeCleanly(ctx.theme, ctx.styles && ctx.styles.variables);
+    }
+  };
+
+  async function boot() {
+    await app.connect();
+    const ctx = app.getHostContext();
+    if (ctx) {
+      applyThemeCleanly(ctx.theme, ctx.styles && ctx.styles.variables);
+    }
+    const caps = app.getHostCapabilities();
+    canAttachContext = Boolean(caps && caps.updateModelContext);
+    render();
+  }
+
+  boot();
+})();
 </script>
 </body>
 </html>
